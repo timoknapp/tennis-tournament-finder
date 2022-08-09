@@ -29,7 +29,6 @@ type Geocoordinates struct {
 }
 
 func getTournaments(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Endpoint Hit: returnAllTournaments")
 	enableCors(&w)
 	Tournaments := []Tournament{}
 
@@ -43,6 +42,7 @@ func getTournaments(w http.ResponseWriter, r *http.Request) {
 		dateIn14Days := today.Add(time.Hour * 336)
 		dateTo = dateIn14Days.Format("02.01.2006")
 	}
+	fmt.Printf("Get Tournaments from: %s to: %s\n", dateFrom, dateTo)
 
 	tournamentsHTV := getTournamentsFromFederation("HTV", dateFrom, dateTo)
 	tournamentsBAD := getTournamentsFromFederation("BAD", dateFrom, dateTo)
@@ -53,6 +53,7 @@ func getTournaments(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTournamentsFromFederation(federation string, dateFrom string, dateTo string) []Tournament {
+	fmt.Printf("Get Tournaments in: %s from: %s to: %s\n", federation, dateFrom, dateTo)
 	var tournaments []Tournament
 
 	var url = ""

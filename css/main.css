@@ -4,7 +4,7 @@ html, body {
 }
 
 #map {
-    height: 100vh;
+    height: 98vh;
     width: 100vw;
     cursor:default;
 }

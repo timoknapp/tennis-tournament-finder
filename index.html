@@ -18,6 +18,15 @@
     <link rel="stylesheet" type="text/css" href="css/main.css">
 </head>
 <body>
+    <div>
+        <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value)">
+            <label for="dateFrom">Date from:</label>
+            <input type="date" id="dateFrom" name="dateFrom">
+            <label for="dateTo">Date to:</label>
+            <input type="date" id="dateTo" name="dateTo">
+            <input type="submit" value="Submit">
+        </form>
+    </div>
 <div id="map"></div>
 <script src="script/main.js"></script>
 </body>
