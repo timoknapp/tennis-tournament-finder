@@ -225,7 +225,7 @@ func getGeocoordinates(state string, query string) Geocoordinates {
 	const urlOSM string = "https://nominatim.openstreetmap.org/search.php?limit=3&accept-language=de&format=jsonv2&q="
 	fmt.Printf("Get Geocoordinates for %s\n", query)
 	// Replace association club abbreviations
-	replaceableStrings := []string{"e.V.", "TC", "Tennis-Club", "Tennisclub", "Rot-Weiß", "Turnverein", "Turn- u. Sportverein", "Sportvereine", "Sportverein", "TV", "SG", "GW", "BW", "SC", "TSG", "Tenniskreis", "Sportgemeinschaft", "Tennisgemeinschaft", "", "Tennis"}
+	replaceableStrings := []string{"e.V.", "TC", "Tennis-Club", "Tennisclub", "Rot-Weiß", "Turnverein", "Turn- u. Sportverein", "Sportvereine", "Sportverein", "TV", "SG", "GW", "BW", "SC", "TSG", "Tenniskreis", "Sportgemeinschaft", "Tennisgemeinschaft", "Tennis"}
 	for i := 0; i < len(replaceableStrings); i++ {
 		query = strings.ReplaceAll(query, replaceableStrings[i], "")
 	}

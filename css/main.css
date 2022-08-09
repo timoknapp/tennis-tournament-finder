@@ -12,3 +12,7 @@ html, body {
 .leaflet-popup-content {
     font-size: 12pt;
 }
+
+.popupTitle {
+    font-size: 14pt;
+}
