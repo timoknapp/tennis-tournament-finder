@@ -57,22 +57,28 @@ func getTournamentsFromFederation(federation string, dateFrom string, dateTo str
 
 	var url = ""
 	var defaultGeocoords Geocoordinates
+	var state = ""
 	const urlBAD string = "https://baden.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
 	const urlHTV string = "https://htv.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
 	var geoCoordsBAD = Geocoordinates{Lat: "49.34003", Lon: "8.68514"}
 	var geoCoordsHTV = Geocoordinates{Lat: "50.0770372", Lon: "8.7553832"}
+	var stateBAD = "Baden-Württemberg"
+	var stateHTV = "Hessen"
 
 	switch federation {
 	case "BAD":
 		url = urlBAD
 		defaultGeocoords = geoCoordsBAD
+		state = stateBAD
 	case "HTV":
 		url = urlHTV
 		defaultGeocoords = geoCoordsHTV
+		state = stateHTV
 	default:
 		federation = "BAD"
 		url = urlBAD
 		defaultGeocoords = geoCoordsBAD
+		state = stateBAD
 	}
 
 	var valuationState = "1"         // 0=No-LK-Status, 1=LK-Status, 2=DTB-Status
@@ -128,7 +134,7 @@ func getTournamentsFromFederation(federation string, dateFrom string, dateTo str
 
 				if len(tournament.Title) > 0 {
 					array := strings.Split(columnTournament.Text(), "\n\t\n\n\n")
-					fmt.Println("Title Array: " + "'" + strings.Join(array, `','`) + `'`)
+					// fmt.Println("Title Array: " + "'" + strings.Join(array, `','`) + `'`)
 					var extractedAddress = ""
 					if len(array) > 1 {
 						extractedAddress = array[1]
@@ -136,12 +142,12 @@ func getTournamentsFromFederation(federation string, dateFrom string, dateTo str
 						fmt.Printf("Tournament address missing: %s ; Date: %s\n", removeFormatFromString(columnTournament.Find("a").Text()), tournament.Date)
 					}
 					address := removeFormatFromString(extractedAddress)
-					// address := removeFormatFromString(columnTournament.Contents().Get(6).Data)
-					fmt.Printf("Extracted Address: %s\n", address)
+					// fmt.Printf("Extracted Address: %s\n", address)
 					tournament.Address = address
 
-					geoCoords := getGeocoordinates(tournament.Address)
+					geoCoords := getGeocoordinates(state, tournament.Address)
 					if geoCoords.Lat == "" || geoCoords.Lon == "" {
+						fmt.Printf("No Geocoordinates could be found for '%s'. Falling back to default in '%s'.\n", tournament.Address, state)
 						geoCoords = defaultGeocoords
 					}
 					tournament.Lat = geoCoords.Lat
@@ -214,13 +220,18 @@ func getTournamentInfo(tournament Tournament) Tournament {
 	return tournament
 }
 
-func getGeocoordinates(query string) Geocoordinates {
+func getGeocoordinates(state string, query string) Geocoordinates {
 	// https://nominatim.openstreetmap.org/search.php?q=MTV+Karlsruhe&limit=1&format=jsonv2
-	const urlOSM string = "https://nominatim.openstreetmap.org/search.php?limit=1&format=jsonv2&q="
+	const urlOSM string = "https://nominatim.openstreetmap.org/search.php?limit=3&accept-language=de&format=jsonv2&q="
 	fmt.Printf("Get Geocoordinates for %s\n", query)
-	reformattedQuery := strings.ReplaceAll(query, " ", "+")
+	// Replace association club abbreviations
+	replaceableStrings := []string{"e.V.", "TC", "Tennis-Club", "Tennisclub", "Rot-Weiß", "Turnverein", "Turn- u. Sportverein", "Sportvereine", "Sportverein", "TV", "SG", "GW", "BW", "SC", "TSG", "Tenniskreis", "Sportgemeinschaft", "Tennisgemeinschaft", "", "Tennis"}
+	for i := 0; i < len(replaceableStrings); i++ {
+		query = strings.ReplaceAll(query, replaceableStrings[i], "")
+	}
+	urlFormattedQuery := strings.ReplaceAll(query, " ", "+")
 
-	res, err := http.Get(urlOSM + reformattedQuery)
+	res, err := http.Get(urlOSM + urlFormattedQuery)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -236,8 +247,13 @@ func getGeocoordinates(query string) Geocoordinates {
 	var result Geocoordinates
 	json.Unmarshal([]byte(string(body)), &geoCoords)
 	if len(geoCoords) > 0 {
-		result = geoCoords[0]
-		fmt.Printf("Lat: %s, Lon: %s, Name: %s\n", geoCoords[0].Lat, geoCoords[0].Lon, geoCoords[0].DisplayName)
+		// Check if coordinates belong to the correct states (region).
+		for i := 0; i < len(geoCoords); i++ {
+			if strings.Contains(geoCoords[i].DisplayName, state) {
+				result = geoCoords[i]
+			}
+		}
+		// fmt.Printf("Lat: %s, Lon: %s, Name: %s\n", result.Lat, result.Lon, result.DisplayName)
 	}
 	return result
 }

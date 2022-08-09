@@ -1,4 +1,4 @@
-# Tennis Tournament Finder
+# 🎾 Tennis Tournament Finder
 
 A simple Map showing all recent tennis tournaments for passionate tennis players in Germany.
 

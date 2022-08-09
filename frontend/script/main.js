@@ -9,7 +9,7 @@ const urlBackend = "http://localhost:8080"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
 
 const dateFrom = formatDate(new Date(Date.now()));
-const dateTo = formatDate(new Date(Date.now()+(2*86400000)));
+const dateTo = formatDate(new Date(Date.now()+(30*86400000)));
 
 getTournaments()
     .then(tournaments => {
@@ -21,9 +21,9 @@ getTournaments()
                 <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["address"]}">${tournament["address"]}</a><br><br>
                 <b>Weitere Infos:</b> <a target="_blank" href="${tournament["url"]}">Auf mybigpoint</a><br>
                 `)
-                .on('click', function(e){
-                    map.setView([tournament["lat"], tournament["lon"]], 15);
-                });
+                // .on('click', function(e){
+                //     map.setView([tournament["lat"], tournament["lon"]], 15);
+                // });
             markers.addLayer(marker);
         }
         map.addLayer(markers);
