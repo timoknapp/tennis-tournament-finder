@@ -1,0 +1,14 @@
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
+#map {
+    height: 100vh;
+    width: 100vw;
+    cursor:default;
+}
+
+.leaflet-popup-content {
+    font-size: 12pt;
+}
