@@ -2,7 +2,7 @@
 
 A simple Map showing all recent tennis tournaments for passionate tennis players in Germany.
 
-<img width="80%" src="images/demo2.jpg">
+<img width="100%" src="images/demo2.jpg">
 
 ## Features
 
