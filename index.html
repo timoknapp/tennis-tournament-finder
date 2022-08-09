@@ -9,25 +9,33 @@
    crossorigin=""/>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+</html>
+
     <!-- Make sure you put this AFTER Leaflet's CSS -->
     <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"
     integrity="sha512-BB3hKbKWOc9Ez/TAwyWxNXeoV9c1v6FIeYiBieIWkpLjauysF18NzgR1MBNBXf8/KABdlkX68nAhlwcDFLGPCQ=="
     crossorigin=""></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
-
+    
     <link rel="stylesheet" type="text/css" href="css/main.css">
 </head>
 <body>
-    <div>
-        <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value)">
-            <label for="dateFrom">Date from:</label>
-            <input type="date" id="dateFrom" name="dateFrom">
-            <label for="dateTo">Date to:</label>
-            <input type="date" id="dateTo" name="dateTo">
-            <input type="submit" value="Submit">
-        </form>
+    <div class="header">
+        <div class="headerElement headerTitle">🎾 Tennis Tournament Finder |</div>
+        <div class="headerElement">
+            <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value)">
+                <label for="dateFrom">Date from:</label>
+                <input type="date" id="dateFrom" name="dateFrom">
+                <label for="dateTo">Date to:</label>
+                <input type="date" id="dateTo" name="dateTo">
+                <input type="submit" value="Submit">
+            </form>
+        </div>
     </div>
-<div id="map"></div>
-<script src="script/main.js"></script>
+    <div id="map"></div>
+    <script src="script/main.js"></script>
 </body>
 </html>
