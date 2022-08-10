@@ -28,12 +28,6 @@ jobs:
           pwd
           ls -la
       
-      - name: Upload artifact
-        uses: actions/upload-artifact@v1
-        with:
-          name: tennis-tournament-finder-backend
-          path: tennis-tournament-finder-backend
-      
       - name: Deploy
         uses: appleboy/scp-action@master
         with:
@@ -41,5 +35,5 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.PORT }}
-          source: "backend/tennis-tournament-finder-backend"
+          source: "tennis-tournament-finder-backend"
           target: ${{ secrets.DEPLOYMENT_PATH }}
