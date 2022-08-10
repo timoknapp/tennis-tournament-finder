@@ -15,15 +15,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Build
+      - name: Setup Go environment
         uses: actions/setup-go@v2
         with:
           go-version: "1.17" # The Go version to download (if necessary) and use.
       
-      - run: |
+      - name: Build
+        run: |
           cd backend
           go version
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend main.go
+          pwd
+          ls -la
       
       - name: Upload artifact
         uses: actions/upload-artifact@v1
