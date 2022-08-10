@@ -38,3 +38,4 @@ jobs:
           port: ${{ secrets.PORT }}
           source: "backend/tennis-tournament-finder-backend"
           target: ${{ secrets.DEPLOYMENT_PATH }}
+          strip_components: 1
