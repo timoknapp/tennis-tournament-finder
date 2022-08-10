@@ -9,7 +9,7 @@ on:
 name: Build Tennis Backend
 jobs:
   build:
-    name: Build & Upload
+    name: Build & Deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -31,6 +31,7 @@ jobs:
       - name: Deploy
         uses: appleboy/scp-action@master
         with:
+          debug: true
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
