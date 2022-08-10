@@ -19,9 +19,10 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: "1.17" # The Go version to download (if necessary) and use.
-      - run: cd backend
-      - run: go version
-      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend backend/main.go
+        run: |
+          cd backend
+          go version
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend main.go
       
       - name: Upload artifact
         uses: actions/upload-artifact@v1
