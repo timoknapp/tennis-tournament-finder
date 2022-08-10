@@ -14,6 +14,7 @@ import (
 )
 
 type Tournament struct {
+	Id      string `json:"id"`
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Date    string `json:"date"`
@@ -28,9 +29,13 @@ type Geocoordinates struct {
 	DisplayName string `json:"display_name"`
 }
 
+var cachedGeocoordinates map[string]Geocoordinates
+
 func getTournaments(w http.ResponseWriter, r *http.Request) {
 	enableCors(&w)
 	Tournaments := []Tournament{}
+
+	fmt.Printf("Cache consists currenty of: %d geocoordinates.\n", len(cachedGeocoordinates))
 
 	today := time.Now()
 	dateFrom := r.URL.Query().Get("dateFrom")
@@ -105,13 +110,6 @@ func getTournamentsFromFederation(federation string, dateFrom string, dateTo str
 	}
 	defer res.Body.Close()
 
-	// body, err := ioutil.ReadAll(res.Body)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-	// fmt.Println(string(body))
-
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
 		fmt.Println(err)
@@ -132,6 +130,8 @@ func getTournamentsFromFederation(federation string, dateFrom string, dateTo str
 				urlElement := columnTournament.Find("a")
 				tournament.Title = removeFormatFromString(urlElement.Text())
 				tournament.URL, _ = urlElement.Attr("href")
+				//https://mybigpoint.tennis.de/web/guest/turniersuche?tournamentId=484582
+				tournament.Id = getTournamentIdByUrl(tournament.URL)
 
 				if len(tournament.Title) > 0 {
 					array := strings.Split(columnTournament.Text(), "\n\t\n\n\n")
@@ -146,9 +146,9 @@ func getTournamentsFromFederation(federation string, dateFrom string, dateTo str
 					// fmt.Printf("Extracted Address: %s\n", address)
 					tournament.Address = address
 
-					geoCoords := getGeocoordinates(state, tournament.Address)
+					geoCoords := getGeocoordinatesFromCache(state, tournament)
 					if geoCoords.Lat == "" || geoCoords.Lon == "" {
-						fmt.Printf("No Geocoordinates could be found for '%s'. Falling back to default in '%s'.\n", tournament.Address, state)
+						fmt.Printf("No Geocoordinates could be found for (%s): '%s'. Falling back to default in '%s'.\n", tournament.Id, tournament.Address, state)
 						geoCoords = defaultGeocoords
 					}
 					tournament.Lat = geoCoords.Lat
@@ -165,6 +165,28 @@ func getTournamentsFromFederation(federation string, dateFrom string, dateTo str
 
 	// fmt.Printf("%q\n", tournaments)
 	return tournaments
+}
+
+func getGeocoordinatesFromCache(state string, tournament Tournament) Geocoordinates {
+	geoCoordinates := cachedGeocoordinates[tournament.Id]
+	if geoCoordinates.Lat == "" && geoCoordinates.Lon == "" && geoCoordinates.DisplayName == "" {
+		fmt.Printf("No Geocoordinate Cache entry found for (%s): '%s'. Fetching data from server.\n", tournament.Id, tournament.Address)
+		geoCoordinates = getGeocoordinates(state, tournament)
+	}
+	return geoCoordinates
+}
+
+func saveGeocoordinatesInCache(tournament Tournament, geoCoordinates Geocoordinates) {
+	cachedGeocoordinates[tournament.Id] = geoCoordinates
+}
+
+func getTournamentIdByUrl(tournamentUrl string) string {
+	array := strings.Split(tournamentUrl, "tournamentId=")
+	if len(array) > 1 {
+		return array[1]
+	} else {
+		return ""
+	}
 }
 
 func getTournamentInfo(tournament Tournament) Tournament {
@@ -221,10 +243,11 @@ func getTournamentInfo(tournament Tournament) Tournament {
 	return tournament
 }
 
-func getGeocoordinates(state string, query string) Geocoordinates {
+func getGeocoordinates(state string, tournament Tournament) Geocoordinates {
 	// https://nominatim.openstreetmap.org/search.php?q=MTV+Karlsruhe&limit=1&format=jsonv2
 	const urlOSM string = "https://nominatim.openstreetmap.org/search.php?limit=3&accept-language=de&format=jsonv2&q="
-	fmt.Printf("Get Geocoordinates for %s\n", query)
+	query := tournament.Address
+	// fmt.Printf("Get Geocoordinates for %s\n", query)
 	// Replace association club abbreviations
 	replaceableStrings := []string{"e.V.", "TC", "TK", "TG", "TV", "SG", "GW", "BW", "RW", "SW", "SF", "SC", "TSG", "SV", "Tennis-Club", "Tennisclub", "Tennisklub", "Rot-Weiß", "Blau-Weiß", "Grün-Weiß", "Grün-Gelb", "Grün-Weiß-Rot", "Schwarz-Weiß", "Turnverein", "Turn- u. Sportverein", "Sportvereine", "Sportverein", "Turnverein", "Tenniskreis", "Sportgemeinschaft", "Tennisgemeinschaft", "Tennisverein", "Tennis"}
 	for i := 0; i < len(replaceableStrings); i++ {
@@ -252,6 +275,7 @@ func getGeocoordinates(state string, query string) Geocoordinates {
 		for i := 0; i < len(geoCoords); i++ {
 			if strings.Contains(geoCoords[i].DisplayName, state) {
 				result = geoCoords[i]
+				saveGeocoordinatesInCache(tournament, result)
 			}
 		}
 		// fmt.Printf("Lat: %s, Lon: %s, Name: %s\n", result.Lat, result.Lon, result.DisplayName)
@@ -278,6 +302,7 @@ func enableCors(w *http.ResponseWriter) {
 }
 
 func main() {
+	cachedGeocoordinates = make(map[string]Geocoordinates)
 	http.HandleFunc("/", getTournaments)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
