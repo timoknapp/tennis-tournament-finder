@@ -19,6 +19,7 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: "1.17" # The Go version to download (if necessary) and use.
+      - run: cd backend
       - run: go version
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend backend/main.go
       
@@ -35,5 +36,5 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.PORT }}
-          source: "tennis-tournament-finder-backend"
+          source: "backend/tennis-tournament-finder-backend"
           target: ${{ secrets.DEPLOYMENT_PATH }}
