@@ -5,7 +5,8 @@ let markers = L.markerClusterGroup();
 
 const urlHTV = "https://htv.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
 const urlBAD = "https://baden.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
-const urlBackend = "http://localhost:8080"
+// const urlBackend = "http://localhost:8080"
+const urlBackend = "https://timoknapp.com/ttf"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
 
 const initDateFrom = new Date(Date.now());
