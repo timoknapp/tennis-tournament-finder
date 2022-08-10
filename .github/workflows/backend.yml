@@ -1,0 +1,39 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+name: Build Tennis Backend
+jobs:
+  build:
+    name: Build & Upload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.17" # The Go version to download (if necessary) and use.
+      - run: go version
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend backend/main.go
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: tennis-tournament-finder-backend
+          path: tennis-tournament-finder-backend
+      
+      - name: Deploy
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          source: "tennis-tournament-finder-backend"
+          target: ${{ secrets.DEPLOYMENT_PATH }}
