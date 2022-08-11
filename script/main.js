@@ -10,7 +10,7 @@ const urlBackend = "https://timoknapp.com/ttf"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
 
 const initDateFrom = new Date(Date.now());
-const initDateTo = new Date(Date.now()+(2*86400000));
+const initDateTo = new Date(Date.now()+(7*86400000));
 
 getTournamentsByDate(initDateFrom, initDateTo);
 
