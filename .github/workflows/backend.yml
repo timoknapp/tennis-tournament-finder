@@ -27,7 +27,7 @@ jobs:
         run: |
           cd backend
           go version
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend cmd/main.go
           pwd
           ls -la
       
