@@ -1,6 +1,13 @@
-# 🎾 Tennis Tournament Finder
-
-A simple Map showing all recent tennis tournaments for passionate tennis players in Germany.
+<h1 align="center" style="border-bottom: none;">🎾 Tennis Tournament Finder</h1>
+<h3 align="center">A simple Map showing all recent tennis tournaments for passionate tennis players in Germany.</h3>
+<p align="center">
+    <a href="https://github.com/timoknapp/tennis-tournament-finder/actions/workflows/backend.yml">
+        <img alt="Build Backend" src="https://github.com/timoknapp/tennis-tournament-finder/actions/workflows/backend.yml/badge.svg?branch=master">
+    </a>
+    <a href="https://github.com/timoknapp/tennis-tournament-finder/actions/workflows/pages/pages-build-deployment">
+        <img alt="Build Frontend" src="https://github.com/timoknapp/tennis-tournament-finder/actions/workflows/pages/pages-build-deployment/badge.svg?branch=master">
+    </a>
+</p>
 
 <img width="100%" src="images/demo2.jpg">
 
