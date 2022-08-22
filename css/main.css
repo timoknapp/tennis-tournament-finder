@@ -5,7 +5,7 @@ html, body {
 }
 
 #map {
-    height: 98vh;
+    height: 97vh;
     width: 100vw;
     cursor:default;
 }
@@ -20,7 +20,7 @@ html, body {
 
 .header {
     padding-left: 20px;
-    font-size: 14pt;
+    font-size: 20pt;
 }
 
 .headerElement {

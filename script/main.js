@@ -14,7 +14,8 @@ const initDateTo = new Date(Date.now()+(7*86400000));
 
 getTournamentsByDate(initDateFrom, initDateTo);
 
-function getTournamentsByDate(dateFrom, dateTo) {
+function getTournamentsByDate(dateFrom, dateTo, compType, fedRank) {
+    console.log(`Date: ${dateFrom}-${dateTo}, Competition: ${compType}, LK: ${fedRank}`);
     if (dateFrom != "" && dateTo != "") {
         dateFrom = formatDate(dateFrom);
         dateTo = formatDate(dateTo);
