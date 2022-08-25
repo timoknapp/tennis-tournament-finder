@@ -26,11 +26,49 @@
     <div class="header">
         <div class="headerElement headerTitle">🎾 Tennis Tournament Finder |</div>
         <div class="headerElement">
-            <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value)">
-                <label for="dateFrom">Date from:</label>
-                <input type="date" id="dateFrom" name="dateFrom">
-                <label for="dateTo">Date to:</label>
+            <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value, compType.value, fedRank.value)">
+                <label for="dateFrom">Zeitraum:</label>
+                <input type="date" id="dateFrom" name="dateFrom"> -
                 <input type="date" id="dateTo" name="dateTo">
+                <label>Konkurrenzen:</label>
+                <select id="compType" name="compType">
+                    <option value="WONoSelectionString">-</option>
+                    <option selected="selected" value="Herren Einzel">Herren Einzel</option>
+                    <option value="Herren Doppel">Herren Doppel</option>
+                    <option value="Damen Einzel">Damen Einzel</option>
+                    <option value="Damen Doppel">Damen Doppel</option>
+                    <option value="Senioren Einzel">Senioren Einzel</option>
+                    <option value="Senioren Doppel">Senioren Doppel</option>
+                    <option value="Jugend Einzel">Jugend Einzel</option>
+                    <option value="Jugend Doppel">Jugend Doppel</option>
+                </select>
+                <label>LK:</label>
+                <select id="fedRank" name="fedRank">
+                    <option value="WONoSelectionString">-</option>
+                    <option value="1">LK1</option>
+                    <option value="2">LK2</option>
+                    <option value="3">LK3</option>
+                    <option value="4">LK4</option>
+                    <option value="5">LK5</option>
+                    <option value="6">LK6</option>
+                    <option value="7">LK7</option>
+                    <option value="8">LK8</option>
+                    <option value="9">LK9</option>
+                    <option value="10">LK10</option>
+                    <option value="11">LK11</option>
+                    <option value="12">LK12</option>
+                    <option value="13">LK13</option>
+                    <option value="14">LK14</option>
+                    <option value="15">LK15</option>
+                    <option value="16">LK16</option>
+                    <option value="17">LK17</option>
+                    <option value="18">LK18</option>
+                    <option value="19">LK19</option>
+                    <option value="20">LK20</option>
+                    <option value="21">LK21</option>
+                    <option value="22">LK22</option>
+                    <option value="23">LK23</option>
+                </select>
                 <input type="submit" value="Submit">
             </form>
         </div>

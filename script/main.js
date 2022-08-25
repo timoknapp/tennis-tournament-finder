@@ -2,9 +2,6 @@ let map = L.map('map').setView([51.133481, 10.018343], 7);
 L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map);
 let markers = L.markerClusterGroup();
 
-
-const urlHTV = "https://htv.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
-const urlBAD = "https://baden.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
 // const urlBackend = "http://localhost:8080"
 const urlBackend = "https://timoknapp.com/ttf"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
@@ -14,7 +11,8 @@ const initDateTo = new Date(Date.now()+(7*86400000));
 
 getTournamentsByDate(initDateFrom, initDateTo);
 
-function getTournamentsByDate(dateFrom, dateTo) {
+function getTournamentsByDate(dateFrom, dateTo, compType, fedRank) {
+    console.log(`Date: ${dateFrom}-${dateTo}, Competition: ${compType}, LK: ${fedRank}`);
     if (dateFrom != "" && dateTo != "") {
         dateFrom = formatDate(dateFrom);
         dateTo = formatDate(dateTo);
