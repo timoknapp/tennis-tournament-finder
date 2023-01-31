@@ -7,15 +7,16 @@
     <a href="https://github.com/timoknapp/tennis-tournament-finder/actions/workflows/pages/pages-build-deployment">
         <img alt="Build Frontend" src="https://github.com/timoknapp/tennis-tournament-finder/actions/workflows/pages/pages-build-deployment/badge.svg?branch=master">
     </a>
+    <img width="70%" src="images/demo.jpg">
 </p>
-
-<img width="100%" src="images/demo2.jpg">
 
 ## Features
 
 * Currently supports the following tennis federations:
-    * [Badischer Tennis Verband (BAD)](https://www.badischertennisverband.de/)
-    * [Hessischer Tennis Verband (HTV)](https://www.htv-tennis.de/)
+  * [Badischer Tennis Verband (BAD)](https://www.badischertennisverband.de/)
+  * [Hessischer Tennis Verband (HTV)](https://www.htv-tennis.de/)
+  * [Rheinland-Pfälzischer Tennis Verband (RPTV)](https://www.rlp-tennis.de/)
+  * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
 * Lets you find the tournaments around you
 * Link to the official Tournament at [mybigpoint](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.

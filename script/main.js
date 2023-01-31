@@ -5,6 +5,7 @@ let markers = L.markerClusterGroup();
 
 const urlHTV = "https://htv.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
 const urlBAD = "https://baden.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
+const urlRLP = "https://tvrp.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
 // const urlBackend = "http://localhost:8080"
 const urlBackend = "https://timoknapp.com/ttf"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
@@ -27,7 +28,7 @@ function getTournamentsByDate(dateFrom, dateTo) {
                 .bindPopup(`
                 <span class="popupTitle"><b>${tournament["title"]}</b></span><br><br>
                 <b>Datum:</b> ${tournament["date"]}<br>
-                <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["address"]}">${tournament["address"]}</a><br><br>
+                <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br><br>
                 <b>Weitere Infos:</b> <a target="_blank" href="${tournament["url"]}">Auf mybigpoint</a><br>
                 `)
                 markers.addLayer(marker);
@@ -51,7 +52,8 @@ async function getTournaments(dateFrom, dateTo) {
                     title: "Test Tennis Turnier",
                     url: "https://spieler.tennis.de",
                     date: "01.01. bis 02.01.",
-                    address: "MTV Karslruhe",
+                    location: "Karslruhe",
+                    organizer: "MTV Karslruhe",
                     lat: "49.0229711",
                     lon: "8.4179256"
                 }
