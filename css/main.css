@@ -18,15 +18,65 @@ html, body {
     font-size: 14pt;
 }
 
-.header {
-    padding-left: 20px;
+.sideBar {
+    top: 0;
+    left: 45px;
+    position: absolute;
+    z-index: 10000;
     font-size: 14pt;
 }
 
-.headerElement {
-    display: inline-block;
+.sideBarElement {
+    position: relative;
+    background: #fff;
+    border-radius: 8px;
+    box-sizing: border-box;
+    width: 300px;
+    border-bottom: 1px solid transparent;
+    /* -webkit-transition-property: background,box-shadow; */
+    /* transition-property: background,box-shadow; */
+    /* -webkit-transition-duration: .3s; */
+    /* transition-duration: .3s; */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2),0 -1px 0px rgba(0,0,0,0.02);
+    padding: 9px 9px 9px 9px;
 }
 
-.headerTitle {
+.title {
     font-weight: bold;
+    margin: 10px 0 12px 8px;
+    height: 48px;
+}
+
+.filter {
+    /* display: inline-block; */
+    left: 8px;
+    top: 0;
+    height: 105px;
+}
+
+.submitBtn {
+    color: #1a73e8;
+    cursor: pointer;
+    /* display: block; */
+    /* font-size: 12px; */
+    height: 48px;
+    opacity: .8;
+    text-align: center;
+    text-transform: uppercase;
+    width: 54px;
+    width: 50%;
+    float: right;
+}
+
+.filterContainer {
+    padding: 5px;
+}
+
+.submitContainer {
+    margin-top: 5px;
+}
+
+.filterElement {
+    float: right;
+    width: 50%;
 }

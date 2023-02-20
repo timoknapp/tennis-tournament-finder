@@ -23,15 +23,21 @@
     <link rel="stylesheet" type="text/css" href="css/main.css">
 </head>
 <body>
-    <div class="header">
-        <div class="headerElement headerTitle">🎾 Tennis Tournament Finder |</div>
-        <div class="headerElement">
+    <div class="sideBar">
+        <div class="sideBarElement title">🎾 Tennis Tournament Finder</div>
+        <div class="sideBarElement filter">
             <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value)">
-                <label for="dateFrom">Date from:</label>
-                <input type="date" id="dateFrom" name="dateFrom">
-                <label for="dateTo">Date to:</label>
-                <input type="date" id="dateTo" name="dateTo">
-                <input type="submit" value="Submit">
+                <div class="filterContainer">
+                    <label for="dateFrom">Date from:</label>
+                    <input class="filterElement" type="date" id="dateFrom" name="dateFrom">
+                </div>
+                <div class="filterContainer">
+                    <label for="dateTo">Date to:</label>
+                    <input class="filterElement" type="date" id="dateTo" name="dateTo">
+                </div>
+                <div class="filterContainer submitContainer">
+                    <input class="submitBtn" type="submit" value="Submit">
+                </div>
             </form>
         </div>
     </div>
