@@ -53,11 +53,12 @@ html, body {
     /* display: inline-block; */
     left: 8px;
     top: 0;
-    height: 105px;
+    height: 125px;
 }
 
 .submitBtn {
-    color: #1a73e8;
+    color: #FFFF;
+    background-color: #1a73e8;
     cursor: pointer;
     /* display: block; */
     /* font-size: 12px; */
@@ -71,18 +72,18 @@ html, body {
 }
 
 .filterContainer {
-    padding: 5px;
+    padding: 8px;
 }
 
 .submitContainer {
-    margin-top: 5px;
+    /* margin-top: 5px; */
 }
 
 .filterElement {
     float: right;
     width: 50%;
 }
-
+/*
 @media (any-pointer: coarse) {
     /* do your own styles */
     /* .sideBar {
@@ -91,8 +92,8 @@ html, body {
 
     .sideBarElement {
         width: 100%;
-    } */
-}
+    }
+}*/
 
 @media screen and (orientation:portrait) { 
     .sideBar {
@@ -101,22 +102,27 @@ html, body {
     
     .sideBarElement {
         width: calc(100% - 45px);
-        height: 5.5vw;
-        font-size: 2.5vw;
+        height: 7.5vw;
+        font-size: 4.5vw;
     }
 
     .filter {
-        height: 18.5vw;
+        height: 20.5vw;
+    }
+
+    .filterContainer {
+        font-size: 4.5vw;
+        height: 5vw;
+    }
+    
+    .filterElement {
+        font-size: 3.5vw;
     }
 
     .submitBtn {
         font-size: 2.5vw;
     }
-
-    .filterElement {
-        font-size: 1.5vw;
-    }
-
+    
     .leaflet-popup-content {
         font-size: 1.5vw;
     }
