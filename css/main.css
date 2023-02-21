@@ -11,13 +11,14 @@ html, body {
 }
 
 .leaflet-popup-content {
-    font-size: 12pt;
+    font-size: 12px;
 }
 
 .popupTitle {
-    font-size: 14pt;
+    font-size: 14px;
 }
 
+/* id-omnibox-container */
 .sideBar {
     top: 0;
     left: 45px;
@@ -26,6 +27,7 @@ html, body {
     font-size: 14pt;
 }
 
+/* id-omnibox */
 .sideBarElement {
     position: relative;
     background: #fff;
@@ -59,11 +61,11 @@ html, body {
     cursor: pointer;
     /* display: block; */
     /* font-size: 12px; */
-    height: 48px;
+    /* height: 48px; */
     opacity: .8;
     text-align: center;
     text-transform: uppercase;
-    width: 54px;
+    /* width: 54px; */
     width: 50%;
     float: right;
 }
@@ -79,4 +81,47 @@ html, body {
 .filterElement {
     float: right;
     width: 50%;
+}
+
+@media (any-pointer: coarse) {
+    /* do your own styles */
+    /* .sideBar {
+        width: 100%;
+    }
+
+    .sideBarElement {
+        width: 100%;
+    } */
+}
+
+@media screen and (orientation:portrait) { 
+    .sideBar {
+        width: calc(100% - 45px);
+    }
+    
+    .sideBarElement {
+        width: calc(100% - 45px);
+        height: 5.5vw;
+        font-size: 2.5vw;
+    }
+
+    .filter {
+        height: 18.5vw;
+    }
+
+    .submitBtn {
+        font-size: 2.5vw;
+    }
+
+    .filterElement {
+        font-size: 1.5vw;
+    }
+
+    .leaflet-popup-content {
+        font-size: 1.5vw;
+    }
+
+    .popupTitle {
+        font-size: 1.7vw;
+    }
 }
