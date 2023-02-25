@@ -20,6 +20,7 @@
 * Lets you find the tournaments around you
 * Link to the official Tournament at [mybigpoint](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
+* PWAs (Progressive Web Apps) support. You can install the app on your phone.
 
 ## Getting Started
 

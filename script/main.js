@@ -13,6 +13,8 @@ const urlGoogleQuery = "https://maps.google.com/maps?q="
 const initDateFrom = new Date(Date.now());
 const initDateTo = new Date(Date.now()+(7*86400000));
 
+const loadingDiv = document.getElementById('loading');
+
 getTournamentsByDate(initDateFrom, initDateTo);
 
 function getTournamentsByDate(dateFrom, dateTo) {
@@ -39,13 +41,16 @@ function getTournamentsByDate(dateFrom, dateTo) {
 }
 
 async function getTournaments(dateFrom, dateTo) {
+    showSpinner();
     return fetch(urlBackend+`?dateFrom=${dateFrom}&dateTo=${dateTo}`)
         .then(res => res.json())
         .then(result => {
+            hideSpinner();
             console.log(result);
             return result;
         })
         .catch(error => {
+            hideSpinner();
             console.log('error', error);
             return [
                 {
@@ -74,4 +79,12 @@ function formatDate(date) {
         padTo2Digits(date.getMonth() + 1),
         date.getFullYear(),
     ].join('.');
+}
+
+function showSpinner() {
+  loadingDiv.style.visibility = 'visible';
+}
+
+function hideSpinner() {
+  loadingDiv.style.visibility = 'hidden';
 }
