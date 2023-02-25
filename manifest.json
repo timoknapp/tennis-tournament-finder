@@ -1,10 +1,11 @@
 {
+    "id": "/tennis-tournament-finder/",
     "name": "Tennis Tournament Finder",
     "language": "de-DE",
     "short_name": "TTF",
     "description": "Finde Tennis Turniere in deiner Nähe",
-    "start_url": "/",
-    "scope": "/",
+    "start_url": "/tennis-tournament-finder/",
+    "scope": "/tennis-tournament-finder/",
     "display": "standalone",
     "theme_color": "#000",
     "background_color": "#000",
