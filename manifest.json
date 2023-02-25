@@ -2,7 +2,7 @@
     "name": "Tennis Tournament Finder",
     "language": "de-DE",
     "short_name": "TTF",
-    "description": "Finden Tennis Turniere in deiner Nähe",
+    "description": "Finde Tennis Turniere in deiner Nähe",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",
