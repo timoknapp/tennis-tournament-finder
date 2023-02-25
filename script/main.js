@@ -46,7 +46,7 @@ async function getTournaments(dateFrom, dateTo) {
         .then(res => res.json())
         .then(result => {
             hideSpinner();
-            console.log(result);
+            // console.log(result);
             return result;
         })
         .catch(error => {
