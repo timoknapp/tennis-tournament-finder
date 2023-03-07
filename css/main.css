@@ -2,7 +2,7 @@ html,
 body {
     margin: 0;
     padding: 0;
-    font-family: 'Ubuntu Mono', monospace;
+    font-family: Roboto, Arial, sans-serif;
 }
 
 #map {
@@ -42,7 +42,6 @@ body {
     font-weight: bold;
     margin: 10px 0 12px 8px;
     height: 48px;
-    line-height: 100%;
 }
 
 .filter {
@@ -80,6 +79,10 @@ body {
 }
 
 @media screen and (orientation:portrait) {
+    .title {
+        line-height: 100%;
+    }
+
     .sideBar {
         width: calc(100% - 45px);
     }
