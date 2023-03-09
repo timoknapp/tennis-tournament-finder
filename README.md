@@ -22,6 +22,23 @@
 * Link to address on Google Maps.
 * PWAs (Progressive Web Apps) support. You can install the app on your phone.
 
+### Soon
+
+* Support for more tennis federations:
+  * [Bayerischer Tennis Verband (BTV)](https://www.btv.de)
+  * [Tennis-Verband Berlin-Brandenburg (TVBB)](https://www.tvbb.de)
+  * [Hamburger Tennis-Verband](https://www.hamburger-tennisverband.de)
+  * [Tennisverband Mecklenburg-Vorpommern (TMV)](https://www.tennis-mv.de)
+  * [Tennisverband Mittelrhein (TVM)](https://www.tvm-tennis.de)
+  * [Tennis-Verband Niederrhein (TVN)](https://www.tvn-tennis.de)
+  * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
+  * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
+  * [Sächsischer Tennis Verband (STV)](https://www.stv-tennis.de)
+  * [Tennisverband Sachsen-Anhalt (TSA)](https://www.tennis-tsa.de)
+  * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis-sh.de)
+  * [Thüringer Tennis-Verband (TTV)](https://www.ttv-tennis.de)
+  * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
+
 ## Getting Started
 
 [Try it out!](https://timoknapp.github.io/tennis-tournament-finder/)
