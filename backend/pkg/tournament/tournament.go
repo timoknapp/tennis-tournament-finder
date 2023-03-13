@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/federation"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/util"
 )
 
 func GetTournaments(w http.ResponseWriter, r *http.Request) {
+	federations := federation.GetFederations()
+
 	util.EnableCors(&w)
 	Tournaments := []models.Tournament{}
 
@@ -31,51 +35,33 @@ func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Printf("Get Tournaments from: %s to: %s\n", dateFrom, dateTo)
 
-	tournamentsHTV := getTournamentsFromFederationOldApi("HTV", dateFrom, dateTo)
-	tournamentsBAD := getTournamentsFromFederationOldApi("BAD", dateFrom, dateTo)
-	tournamentsRLP := getTournamentsFromFederationNewApi("RLP", dateFrom, dateTo)
-	tournamentsWTB := getTournamentsFromFederationNewApi("WTB", dateFrom, dateTo)
-
-	Tournaments = util.ConcatMultipleSlices([][]models.Tournament{tournamentsBAD, tournamentsHTV, tournamentsRLP, tournamentsWTB})
+	var wg sync.WaitGroup
+	for i := 0; i < len(federations); i++ {
+		wg.Add(1)
+		go func(fed models.Federation) {
+			defer wg.Done()
+			if fed.ApiVersion == "old" {
+				tournaments := getTournamentsFromFederationOldApi(fed, dateFrom, dateTo)
+				Tournaments = append(Tournaments, tournaments...)
+			} else if fed.ApiVersion == "new" {
+				tournaments := getTournamentsFromFederationNewApi(fed, dateFrom, dateTo)
+				Tournaments = append(Tournaments, tournaments...)
+			}
+		}(federations[i])
+	}
+	wg.Wait()
 
 	json.NewEncoder(w).Encode(Tournaments)
 }
 
-func getTournamentsFromFederationNewApi(federation string, dateFrom string, dateTo string) []models.Tournament {
-	fmt.Printf("Get Tournaments in: %s from: %s to: %s\n", federation, dateFrom, dateTo)
+func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom string, dateTo string) []models.Tournament {
+	fmt.Printf("Get Tournaments in: %s from: %s to: %s\n", federation.Id, dateFrom, dateTo)
 	var tournaments []models.Tournament
 
-	var url = ""
-	var trustedProperties = ""
-	var defaultGeocoords models.Geocoordinates
-	var state = ""
-	const urlRLP string = "https://www.rlp-tennis.de/spielbetrieb/turniere/appTournament.html"
-	const urlWTB string = "https://www.wtb-tennis.de/turniere/turnierkalender/app/nuTournaments.html"
-	const trustedPropertiesRLP string = "{\"tournamentsFilter\":{\"ageCategory\":1,\"ageGroupJuniors\":1,\"ageGroupSeniors\":1,\"circuit\":1,\"region\":1,\"fedRankValuation\":1,\"nationalValuation\":1,\"fedRank\":1,\"name\":1,\"city\":1,\"startDate\":1,\"endDate\":1,\"firstResult\":1,\"maxResults\":1}}8732571a008a8bee386504005773291f579958de"
-	const trustedPropertiesWTB string = "a:1:{s:17:\"tournamentsFilter\";a:15:{s:11:\"ageCategory\";i:1;s:15:\"ageGroupJuniors\";i:1;s:15:\"ageGroupSeniors\";i:1;s:7:\"circuit\";i:1;s:16:\"fedRankValuation\";i:1;s:17:\"nationalValuation\";i:1;s:4:\"type\";i:1;s:7:\"fedRank\";i:1;s:6:\"region\";i:1;s:4:\"name\";i:1;s:4:\"city\";i:1;s:9:\"startDate\";i:1;s:7:\"endDate\";i:1;s:11:\"firstResult\";i:1;s:10:\"maxResults\";i:1;}}0084e646e91ed3b7e155957c5d3b286f2602eebc"
-	var geoCoordsRLP = models.Geocoordinates{Lat: "49.8335079", Lon: "8.0138431"}
-	var geoCoordsWTB = models.Geocoordinates{Lat: "48.853488", Lon: "9.1373019"}
-	var stateRLP = "Rheinland-Pfalz"
-	var stateWTB = "Württemberg"
-
-	switch federation {
-	case "RLP":
-		url = urlRLP
-		trustedProperties = trustedPropertiesRLP
-		defaultGeocoords = geoCoordsRLP
-		state = stateRLP
-	case "WTB":
-		url = urlWTB
-		trustedProperties = trustedPropertiesWTB
-		defaultGeocoords = geoCoordsWTB
-		state = stateWTB
-	default:
-		federation = "RLP"
-		url = urlRLP
-		trustedProperties = trustedPropertiesRLP
-		defaultGeocoords = geoCoordsRLP
-		state = stateRLP
-	}
+	var url = federation.Url
+	var trustedProperties = federation.TrustedProperties
+	var defaultGeocoords = federation.Geocoordinates
+	var state = federation.State
 
 	var fedRankValuation = "true"
 	var fedRank = "20"
@@ -160,42 +146,20 @@ func getTournamentsFromFederationNewApi(federation string, dateFrom string, date
 	return tournaments
 }
 
-func getTournamentsFromFederationOldApi(federation string, dateFrom string, dateTo string) []models.Tournament {
-	fmt.Printf("Get Tournaments in: %s from: %s to: %s\n", federation, dateFrom, dateTo)
+func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom string, dateTo string) []models.Tournament {
+	fmt.Printf("Get Tournaments in: %s from: %s to: %s\n", federation.Id, dateFrom, dateTo)
 	var tournaments []models.Tournament
 
-	var url = ""
-	var defaultGeocoords models.Geocoordinates
-	var state = ""
-	const urlBAD string = "https://baden.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
-	const urlHTV string = "https://htv.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
-	var geoCoordsBAD = models.Geocoordinates{Lat: "49.34003", Lon: "8.68514"}
-	var geoCoordsHTV = models.Geocoordinates{Lat: "50.0770372", Lon: "8.7553832"}
-	var stateBAD = "Baden-Württemberg"
-	var stateHTV = "Hessen"
-
-	switch federation {
-	case "BAD":
-		url = urlBAD
-		defaultGeocoords = geoCoordsBAD
-		state = stateBAD
-	case "HTV":
-		url = urlHTV
-		defaultGeocoords = geoCoordsHTV
-		state = stateHTV
-	default:
-		federation = "BAD"
-		url = urlBAD
-		defaultGeocoords = geoCoordsBAD
-		state = stateBAD
-	}
+	var url = federation.Url
+	var defaultGeocoords = federation.Geocoordinates
+	var state = federation.State
 
 	var valuationState = "1"         // 0=No-LK-Status, 1=LK-Status, 2=DTB-Status
 	var queryYoungOld = "2"          // 1=Youth, 2=Adult, 3=Senior
 	var compType = "Herren%2BEinzel" // Tournament Type: Herren%2BEinzel, Herren%2BDoppel, Damen%2BEinzel, Damen%2BDoppel, Senioren%2BEinzel, Senioren%2BDoppel, Jugend%2BEinzel, Jugend%2BDoppel
 	var fedRank = "21"               // LK Rank: 1-23
 
-	payload := strings.NewReader("queryName=&queryDateFrom=" + dateFrom + "&queryDateTo=" + dateTo + "&valuationState=" + valuationState + "&queryYoungOld=" + queryYoungOld + "&compType=" + compType + "&fedRank=" + fedRank + "&federation=" + federation)
+	payload := strings.NewReader("queryName=&queryDateFrom=" + dateFrom + "&queryDateTo=" + dateTo + "&valuationState=" + valuationState + "&queryYoungOld=" + queryYoungOld + "&compType=" + compType + "&fedRank=" + fedRank + "&federation=" + federation.Id)
 
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", url, payload)

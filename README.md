@@ -12,10 +12,15 @@
 
 ## Features
 
-* Currently supports the following tennis federations:
+* Currently supported tennis federations:
   * [Badischer Tennis Verband (BAD)](https://www.badischertennisverband.de/)
   * [Hessischer Tennis Verband (HTV)](https://www.htv-tennis.de/)
   * [Rheinland-Pfälzischer Tennis Verband (RPTV)](https://www.rlp-tennis.de/)
+  * [Sächsischer Tennis Verband (STV)](https://www.stv-tennis.de)
+  * [Tennisverband Mecklenburg-Vorpommern (TMV)](https://www.tennis-mv.de)
+  * [Tennisverband Sachsen-Anhalt (TSA)](https://www.tennis-tsa.de)
+  * [Thüringer Tennis-Verband (TTV)](https://www.ttv-tennis.de)
+  * [Tennis-Verband Niederrhein (TVN)](https://www.tvn-tennis.de)
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
 * Lets you find the tournaments around you
 * Link to the official Tournament at [mybigpoint](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
@@ -28,15 +33,10 @@
   * [Bayerischer Tennis Verband (BTV)](https://www.btv.de)
   * [Tennis-Verband Berlin-Brandenburg (TVBB)](https://www.tvbb.de)
   * [Hamburger Tennis-Verband](https://www.hamburger-tennisverband.de)
-  * [Tennisverband Mecklenburg-Vorpommern (TMV)](https://www.tennis-mv.de)
   * [Tennisverband Mittelrhein (TVM)](https://www.tvm-tennis.de)
-  * [Tennis-Verband Niederrhein (TVN)](https://www.tvn-tennis.de)
   * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
   * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
-  * [Sächsischer Tennis Verband (STV)](https://www.stv-tennis.de)
-  * [Tennisverband Sachsen-Anhalt (TSA)](https://www.tennis-tsa.de)
-  * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis-sh.de)
-  * [Thüringer Tennis-Verband (TTV)](https://www.ttv-tennis.de)
+  * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis.sh)
   * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 
 ## Getting Started

@@ -2,10 +2,6 @@ let map = L.map('map').setView([51.133481, 10.018343], 7);
 L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map);
 let markers = L.markerClusterGroup();
 
-
-const urlHTV = "https://htv.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
-const urlBAD = "https://baden.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
-const urlRLP = "https://tvrp.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar"
 // const urlBackend = "http://localhost:8080"
 const urlBackend = "https://timoknapp.com/ttf"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
