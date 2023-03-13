@@ -1,0 +1,25 @@
+{
+    "id": "/tennis-tournament-finder/",
+    "name": "Tennis Tournament Finder",
+    "language": "de-DE",
+    "short_name": "TTF",
+    "description": "Finde Tennis Turniere in deiner Nähe",
+    "start_url": "/",
+    "scope": "/",
+    "display": "fullscreen",
+    "theme_color": "#000",
+    "background_color": "#000",
+    "orientation": "any",
+    "icons": [
+        {
+            "src": "/images/icon192.png",
+            "type": "image/png",
+            "sizes": "192x192"
+        },
+        {
+            "src": "/images/icon512.png",
+            "type": "image/png",
+            "sizes": "512x512"
+        }
+    ]
+}

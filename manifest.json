@@ -1,25 +1,51 @@
 {
-    "id": "/tennis-tournament-finder/",
-    "name": "Tennis Tournament Finder",
-    "language": "de-DE",
-    "short_name": "TTF",
-    "description": "Finde Tennis Turniere in deiner Nähe",
-    "start_url": "/tennis-tournament-finder/",
-    "scope": "/tennis-tournament-finder/",
-    "display": "standalone",
-    "theme_color": "#000",
-    "background_color": "#000",
-    "orientation": "any",
-    "icons": [
-        {
-            "src": "/tennis-tournament-finder/images/icon192.png",
-            "type": "image/png",
-            "sizes": "192x192"
-        },
-        {
-            "src": "/tennis-tournament-finder/images/icon512.png",
-            "type": "image/png",
-            "sizes": "512x512"
-        }
-    ]
+  "id": "io.github.timoknapp.tennis-tournament-finder",
+  "name": "Tennis Tournament Finder",
+  "language": "de-DE",
+  "short_name": "TTF",
+  "description": "Finde Tennis Turniere in deiner Nähe",
+  "start_url": "/tennis-tournament-finder/",
+  "scope": "/tennis-tournament-finder/",
+  "display": "standalone",
+  "theme_color": "#000",
+  "background_color": "#000",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/tennis-tournament-finder/images/icon192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/tennis-tournament-finder/images/icon512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/tennis-tournament-finder/images/icon192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/tennis-tournament-finder/images/icon512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "images/screenshots/1112x834-screenshot.png",
+      "sizes": "1112x834",
+      "type": "image/png"
+    },
+    {
+      "src": "images/screenshots/750x1334-screenshot.png",
+      "sizes": "750x1334",
+      "type": "image/png"
+    }
+  ]
 }
