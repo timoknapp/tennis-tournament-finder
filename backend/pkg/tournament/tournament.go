@@ -21,7 +21,7 @@ func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	util.EnableCors(&w)
 	Tournaments := []models.Tournament{}
 
-	fmt.Printf("Cache consists currenty of: %d geocoordinates.\n", len(openstreetmap.CachedGeocoordinates))
+	fmt.Printf("Cache consists currently of: %d geocoordinates.\n", len(openstreetmap.CachedGeocoordinates))
 
 	today := time.Now()
 	dateFrom := r.URL.Query().Get("dateFrom")

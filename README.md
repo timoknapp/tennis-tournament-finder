@@ -10,6 +10,10 @@
 </p>
 <img width="100%" src="images/demo.jpg">
 
+## Getting Started
+
+[Try it out!](https://timoknapp.github.io/tennis-tournament-finder/)
+
 ## Features
 
 * Currently supported tennis federations:
@@ -39,6 +43,12 @@
   * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis.sh)
   * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 
-## Getting Started
+## FAQ
 
-[Try it out!](https://timoknapp.github.io/tennis-tournament-finder/)
+### Tournament is not shown with the correct location on the map
+
+This is a known issue. The location of the tournament is not always correct. This is due to the fact that the [OSM](https://www.openstreetmap.de) is not always capable of performing the geocoding right. There are two potential outcomes:
+  
+  1. Tournament location falls back to the default address of the corresponding tennis federation. There will then be a list of tournaments associated to the default address.
+     * <img width="20%" src="images/geocoordsNotFound.png">
+  2. Tournament location is showing a completely different location. In this case please click on the link next to "Adresse". This will then lead you to the address on [Google Maps](http://maps.google.com) and this location is mostly correct.
