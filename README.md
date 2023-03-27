@@ -26,8 +26,8 @@
   * [Thüringer Tennis-Verband (TTV)](https://www.ttv-tennis.de)
   * [Tennis-Verband Niederrhein (TVN)](https://www.tvn-tennis.de)
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
-* Lets you find the tournaments around you
-* Link to the official Tournament at [mybigpoint](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
+* Helps you finding the tournaments around you
+* Short link to the official Tournament at [mybigpoint](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
 * PWAs (Progressive Web Apps) support. You can install the app on your phone.
 
@@ -45,7 +45,7 @@
 
 ## FAQ
 
-### Tournament is not shown with the correct location on the map
+### 1. Tournament is not shown with the correct location on the map
 
 This is a known issue. The location of the tournament is not always correct. This is due to the fact that [OSM](https://www.openstreetmap.de) is not always capable of performing the geocoding right. There are two potential outcomes:
   
