@@ -42,6 +42,7 @@
   * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
   * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis.sh)
   * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
+* Store favorite tournaments (locally)
 
 ## FAQ
 
