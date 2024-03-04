@@ -32,7 +32,7 @@ jobs:
           ls -la
       
       - name: Deploy
-        uses: appleboy/scp-action@master
+        uses: appleboy/scp-action@v0.1.7
         if: github.event_name != 'pull_request'
         with:
           host: ${{ secrets.HOST }}
