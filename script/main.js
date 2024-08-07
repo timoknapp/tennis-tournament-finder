@@ -9,14 +9,17 @@ const urlGoogleQuery = "https://maps.google.com/maps?q="
 const initDateFrom = new Date(Date.now());
 const initDateTo = new Date(Date.now()+(7*86400000));
 
+document.getElementById('dateFrom').value = formatDateToInput(initDateFrom);
+document.getElementById('dateTo').value = formatDateToInput(initDateTo);
+
 const loadingDiv = document.getElementById('loading');
 
 getTournamentsByDate(initDateFrom, initDateTo);
 
 function getTournamentsByDate(dateFrom, dateTo) {
     if (dateFrom != "" && dateTo != "") {
-        dateFrom = formatDate(dateFrom);
-        dateTo = formatDate(dateTo);
+        dateFrom = formatDateToAPI(dateFrom);
+        dateTo = formatDateToAPI(dateTo);
         getTournaments(dateFrom, dateTo)
         .then(tournaments => {
             map.removeLayer(markers);
@@ -66,7 +69,7 @@ function padTo2Digits(num) {
     return num.toString().padStart(2, '0');
 }
 
-function formatDate(date) {
+function formatDateToAPI(date) {
     if (!(date instanceof Date)) {
         date = new Date (date);
     }
@@ -75,6 +78,14 @@ function formatDate(date) {
         padTo2Digits(date.getMonth() + 1),
         date.getFullYear(),
     ].join('.');
+}
+
+// Function to format date to YYYY-MM-DD
+function formatDateToInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function showSpinner() {
