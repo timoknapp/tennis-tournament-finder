@@ -9,6 +9,10 @@ on:
     branches:
       - master
 
+env:
+  HOST: ${{ secrets.HOST }}
+  PORT: ${{ secrets.PORT }}
+
 name: Build Tennis Backend
 jobs:
   build:
@@ -35,10 +39,10 @@ jobs:
         uses: appleboy/scp-action@v0.1.3
         if: github.event_name != 'pull_request'
         with:
-          host: ${{ secrets.HOST }}
+          host: ${{ env.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.PORT }}
+          port: ${{ env.PORT }}
           source: "backend/tennis-tournament-finder-backend"
           target: ${{ secrets.DEPLOYMENT_PATH }}
           strip_components: 1
@@ -47,8 +51,8 @@ jobs:
         uses: appleboy/ssh-action@master
         if: github.event_name != 'pull_request'
         with:
-          host: ${{ secrets.HOST }}
+          host: ${{ env.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.PORT }}
+          port: ${{ env.PORT }}
           script: supervisorctl restart tennis-tournament-finder-backend
