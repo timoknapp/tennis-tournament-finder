@@ -10,8 +10,8 @@ on:
       - master
 
 env:
-  HOST: ${{ secrets.HOST }}
-  PORT: ${{ secrets.PORT }}
+  HOST: ${{ vars.HOST }}
+  PORT: ${{ vars.PORT }}
 
 name: Build Tennis Backend
 jobs:
