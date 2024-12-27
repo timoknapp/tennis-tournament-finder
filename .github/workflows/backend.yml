@@ -32,7 +32,7 @@ jobs:
           ls -la
       
       - name: Deploy
-        uses: appleboy/scp-action@v0.1.3
+        uses: appleboy/scp-action@master
         if: github.event_name != 'pull_request'
         with:
           host: ${{ vars.HOST }}
@@ -42,6 +42,7 @@ jobs:
           source: "backend/tennis-tournament-finder-backend"
           target: ${{ secrets.DEPLOYMENT_PATH }}
           strip_components: 1
+          timeout: 120s
 
       - name: Restart Service
         uses: appleboy/ssh-action@master
