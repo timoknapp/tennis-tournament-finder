@@ -31,18 +31,28 @@ jobs:
           pwd
           ls -la
       
+      # - name: Deploy
+      #   uses: appleboy/scp-action@v0.1.3
+      #   if: github.event_name != 'pull_request'
+      #   with:
+      #     host: ${{ vars.HOST }}
+      #     username: ${{ secrets.USERNAME }}
+      #     key: ${{ secrets.SSH_KEY }}
+      #     port: ${{ vars.PORT }}
+      #     source: "backend/tennis-tournament-finder-backend"
+      #     target: ${{ secrets.DEPLOYMENT_PATH }}
+      #     strip_components: 1
+      #     timeout: 120s
+
       - name: Deploy
-        uses: appleboy/scp-action@v0.1.3
+        uses: garygrossgarten/github-action-scp@release
         if: github.event_name != 'pull_request'
         with:
           host: ${{ vars.HOST }}
           username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ vars.PORT }}
-          source: "backend/tennis-tournament-finder-backend"
-          target: ${{ secrets.DEPLOYMENT_PATH }}
-          strip_components: 1
-          timeout: 120s
+          privateKey: ${{ secrets.SSH_KEY }}
+          local: "backend/tennis-tournament-finder-backend"
+          remote: ${{ secrets.DEPLOYMENT_PATH }}
 
       - name: Restart Service
         uses: appleboy/ssh-action@master
