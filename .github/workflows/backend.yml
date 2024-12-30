@@ -31,35 +31,35 @@ jobs:
           pwd
           ls -la
       
-      # - name: Deploy
-      #   uses: appleboy/scp-action@v0.1.3
-      #   if: github.event_name != 'pull_request'
-      #   with:
-      #     host: ${{ vars.HOST }}
-      #     username: ${{ secrets.USERNAME }}
-      #     key: ${{ secrets.SSH_KEY }}
-      #     port: ${{ vars.PORT }}
-      #     source: "backend/tennis-tournament-finder-backend"
-      #     target: ${{ secrets.DEPLOYMENT_PATH }}
-      #     strip_components: 1
-      #     timeout: 120s
-
       - name: Deploy
-        uses: garygrossgarten/github-action-scp@release
+        uses: appleboy/scp-action@v0.1.7
         if: github.event_name != 'pull_request'
         with:
-          host: ${{ vars.HOST }}
+          host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
-          privateKey: ${{ secrets.SSH_KEY }}
-          local: "backend/tennis-tournament-finder-backend"
-          remote: ${{ secrets.DEPLOYMENT_PATH }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          source: "backend/tennis-tournament-finder-backend"
+          target: ${{ secrets.DEPLOYMENT_PATH }}
+          strip_components: 1
+          # timeout: 120s
+
+      # - name: Deploy
+      #   uses: garygrossgarten/github-action-scp@release
+      #   if: github.event_name != 'pull_request'
+      #   with:
+      #     host: ${{ secrets.HOST }}
+      #     username: ${{ secrets.USERNAME }}
+      #     privateKey: ${{ secrets.SSH_KEY }}
+      #     local: "backend/tennis-tournament-finder-backend"
+      #     remote: ${{ secrets.DEPLOYMENT_PATH }}
 
       - name: Restart Service
         uses: appleboy/ssh-action@master
         if: github.event_name != 'pull_request'
         with:
-          host: ${{ vars.HOST }}
+          host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ vars.PORT }}
+          port: ${{ secrets.PORT }}
           script: supervisorctl restart tennis-tournament-finder-backend
