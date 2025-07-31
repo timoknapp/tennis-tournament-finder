@@ -27,7 +27,7 @@
   * [Tennis-Verband Niederrhein (TVN)](https://www.tvn-tennis.de)
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
 * Helps you finding the tournaments around you
-* Short link to the official Tournament at [mybigpoint](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
+* Short link to the official Tournament at [tennis.de](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
 * PWAs (Progressive Web Apps) support. You can install the app on your phone.
 
