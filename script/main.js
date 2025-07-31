@@ -30,7 +30,7 @@ function getTournamentsByDate(dateFrom, dateTo) {
                 <span class="popupTitle"><b>${tournament["title"]}</b></span><br><br>
                 <b>Datum:</b> ${tournament["date"]}<br>
                 <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br><br>
-                <b>Weitere Infos:</b> <a target="_blank" href="${tournament["url"]}">Auf mybigpoint</a><br>
+                <b>Weitere Infos</b> <a target="_blank" href="${tournament["url"]}">auf tennis.de (login erforderlich)</a><br>
                 `)
                 markers.addLayer(marker);
             }
