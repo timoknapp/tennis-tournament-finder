@@ -2,8 +2,8 @@ let map = L.map('map').setView([51.133481, 10.018343], 7);
 L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map);
 let markers = L.markerClusterGroup();
 
-// const urlBackend = "http://localhost:8080"
-const urlBackend = "https://timoknapp.com/ttf"
+const urlBackend = "http://localhost:8080"
+// const urlBackend = "https://timoknapp.com/ttf"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
 
 const initDateFrom = new Date(Date.now());
