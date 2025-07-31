@@ -197,7 +197,6 @@ func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom s
 				urlElement := columnTournament.Find("a")
 				tournament.Title = util.RemoveFormatFromString(urlElement.Text())
 				tournament.URL, _ = urlElement.Attr("href")
-				//https://mybigpoint.tennis.de/web/guest/turniersuche?tournamentId=484582
 				tournament.Id = getTournamentIdByUrl(tournament.URL)
 
 				if len(tournament.Title) > 0 {
@@ -235,7 +234,9 @@ func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom s
 }
 
 func getTournamentIdByUrl(tournamentUrl string) string {
-	array := strings.Split(tournamentUrl, "tournamentId=")
+	// Old Mybigpoint: https://mybigpoint.tennis.de/web/guest/turniersuche?tournamentId=484582
+	// New Tennis.de: https://www.tennis.de/spielen/turniersuche.html#detail/699982
+	array := strings.Split(tournamentUrl, "detail/")
 	if len(array) > 1 {
 		return array[1]
 	} else {
