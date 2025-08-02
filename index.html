@@ -36,8 +36,11 @@
 </head>
 <body>
     <div class="sideBar">
-        <div class="sideBarElement title">🎾 Tennis Tournament Finder</div>
-        <div class="sideBarElement filter">
+        <div class="sideBarElement title">
+            🎾 Tennis Tournament Finder
+            <button id="filterToggle" class="filterToggleBtn" onclick="toggleFilters()">Filter ⚙️</button>
+        </div>
+        <div class="sideBarElement filter" id="filterContainer">
             <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value, compType.value, getSelectedFederations())">
                 <div class="filterContainer">
                     <label for="dateFrom">Date from:</label>
@@ -91,10 +94,10 @@
                         <label class="checkboxLabel">
                             <input type="checkbox" name="federations" value="WTB" checked> WTB
                         </label>
-                        <div class="federationControls">
+                        <!-- <div class="federationControls">
                             <button type="button" onclick="selectAllFederations()">Alle</button>
                             <button type="button" onclick="deselectAllFederations()">Keine</button>
-                        </div>
+                        </div> -->
                     </div>
                 </div>
                 <div class="filterContainer submitContainer">

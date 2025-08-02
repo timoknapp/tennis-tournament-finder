@@ -42,6 +42,25 @@ body {
     font-weight: bold;
     margin: 10px 0 12px 8px;
     height: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.filterToggleBtn {
+    display: none; /* Hidden by default on desktop */
+    background: #1a73e8;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 5px;
+}
+
+.filterToggleBtn:hover {
+    background: #1557b0;
 }
 
 .filter {
@@ -81,6 +100,14 @@ body {
 @media screen and (orientation:portrait) {
     .title {
         line-height: 100%;
+        height: auto;
+        padding: 1vw;
+    }
+    
+    .filterToggleBtn {
+        display: block; /* Show toggle button on mobile */
+        font-size: 3vw;
+        padding: 1.5vw 3vw;
     }
 
     .sideBar {
@@ -89,20 +116,26 @@ body {
 
     .sideBarElement {
         width: calc(100% - 45px);
-        height: 7.5vw;
+        min-height: 7.5vw;
+        height: auto; /* Allow dynamic height */
         font-size: 4.5vw;
         padding: 1.5vw 1.5vh 1.5vw 1.5vh;
         border-radius: 2.7vw;
     }
 
     .filter {
-        height: max-content;
+        display: none; /* Hidden by default on mobile */
+        height: auto; /* Dynamic height when shown */
+        max-height: 70vh; /* Limit maximum height */
+        overflow-y: auto; /* Add scroll if needed */
     }
 
     .filterContainer {
         font-size: 4.5vw;
-        height: 8vw;
-        padding: 1vw 1vh;
+        height: auto; /* Dynamic height instead of fixed */
+        min-height: 8vw;
+        padding: 2vw 1vh;
+        margin-bottom: 1vw; /* Add spacing between filter sections */
     }
 
     .filterElement {
@@ -112,6 +145,13 @@ body {
 
     .submitBtn {
         font-size: 2.5vw;
+        width: 80%; /* Make button larger on mobile */
+        padding: 2vw;
+    }
+
+    .submitContainer {
+        margin-top: 2vw;
+        margin-bottom: 2vw;
     }
 
     .leaflet-popup-content {
@@ -133,6 +173,11 @@ body {
     .checkboxLabel input[type="checkbox"] {
         margin-right: 1vw;
         transform: scale(1.2);
+    }
+
+    .checkboxLabel input[type="checkbox"]:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     .federationControls button {
@@ -291,6 +336,16 @@ body {
 
 .checkboxLabel input[type="checkbox"] {
     margin-right: 4px;
+}
+
+.checkboxLabel input[type="checkbox"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.checkboxLabel input[type="checkbox"]:disabled + span {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .federationControls {

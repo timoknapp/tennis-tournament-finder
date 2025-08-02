@@ -14,7 +14,37 @@ document.getElementById('dateTo').value = formatDateToInput(initDateTo);
 
 const loadingDiv = document.getElementById('loading');
 
-getTournamentsByDate(initDateFrom, initDateTo, "", getSelectedFederations());
+// Initialize mobile filter visibility
+document.addEventListener('DOMContentLoaded', function() {
+    initializeMobileFilters();
+    setupFederationLimits();
+});
+
+function initializeMobileFilters() {
+    const filterContainer = document.getElementById('filterContainer');
+    const toggleBtn = document.getElementById('filterToggle');
+    
+    if (filterContainer && toggleBtn) {
+        // Check if we're in portrait mode (mobile)
+        if (window.matchMedia("(orientation: portrait)").matches) {
+            // Show filters by default on mobile
+            filterContainer.style.display = 'block';
+            toggleBtn.innerHTML = 'Filter ✕';
+        } else {
+            // Always show filters on desktop/landscape
+            filterContainer.style.display = 'block';
+            toggleBtn.innerHTML = 'Filter ✕';
+        }
+    }
+}
+
+// Listen for orientation changes
+window.addEventListener('orientationchange', function() {
+    setTimeout(initializeMobileFilters, 100); // Small delay to ensure orientation change is complete
+});
+
+// Remove automatic initial request - user must manually submit
+// getTournamentsByDate(initDateFrom, initDateTo, "", getSelectedFederations());
 
 function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
     if (dateFrom != "" && dateTo != "") {
@@ -152,10 +182,66 @@ function getSelectedFederations() {
 
 function selectAllFederations() {
     const checkboxes = document.querySelectorAll('input[name="federations"]');
-    checkboxes.forEach(checkbox => checkbox.checked = true);
+    // Only select the first 2 federations
+    checkboxes.forEach((checkbox, index) => {
+        checkbox.checked = index < 2;
+    });
+    updateFederationSelectionState();
 }
 
 function deselectAllFederations() {
     const checkboxes = document.querySelectorAll('input[name="federations"]');
     checkboxes.forEach(checkbox => checkbox.checked = false);
+    updateFederationSelectionState();
+}
+
+function setupFederationLimits() {
+    const checkboxes = document.querySelectorAll('input[name="federations"]');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const checkedBoxes = document.querySelectorAll('input[name="federations"]:checked');
+            
+            if (checkedBoxes.length > 2) {
+                // If more than 2 are selected, uncheck the current one
+                this.checked = false;
+                alert('Sie können maximal 2 Verbände gleichzeitig auswählen, um die Serverbelastung zu reduzieren.');
+            }
+            
+            updateFederationSelectionState();
+        });
+    });
+    
+    // Initialize with first 2 federations selected
+    checkboxes.forEach((checkbox, index) => {
+        checkbox.checked = index < 2;
+    });
+    updateFederationSelectionState();
+}
+
+function updateFederationSelectionState() {
+    const checkboxes = document.querySelectorAll('input[name="federations"]');
+    const checkedBoxes = document.querySelectorAll('input[name="federations"]:checked');
+    
+    // Disable unchecked boxes if 2 are already selected
+    checkboxes.forEach(checkbox => {
+        if (!checkbox.checked && checkedBoxes.length >= 2) {
+            checkbox.disabled = true;
+        } else {
+            checkbox.disabled = false;
+        }
+    });
+}
+
+function toggleFilters() {
+    const filterContainer = document.getElementById('filterContainer');
+    const toggleBtn = document.getElementById('filterToggle');
+    
+    if (filterContainer.style.display === 'none') {
+        filterContainer.style.display = 'block';
+        toggleBtn.innerHTML = 'Filter ✕';
+    } else {
+        filterContainer.style.display = 'none';
+        toggleBtn.innerHTML = 'Filter ⚙️';
+    }
 }
