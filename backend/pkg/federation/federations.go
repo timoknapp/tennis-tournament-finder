@@ -29,7 +29,7 @@ func GetFederations() []models.Federation {
 			Geocoordinates:    models.Geocoordinates{Lat: "49.8335079", Lon: "8.0138431"},
 			State:             "Rheinland-Pfalz",
 			ApiVersion:        "new",
-			TrustedProperties: "{\"tournamentsFilter\":{\"ageCategory\":1,\"ageGroupJuniors\":1,\"ageGroupSeniors\":1,\"circuit\":1,\"region\":1,\"fedRankValuation\":1,\"nationalValuation\":1,\"fedRank\":1,\"name\":1,\"city\":1,\"startDate\":1,\"endDate\":1,\"firstResult\":1,\"maxResults\":1}}8732571a008a8bee386504005773291f579958de",
+			TrustedProperties: "{\"tournamentsFilter\":{\"ageCategory\":1,\"ageGroupJuniors\":1,\"ageGroupSeniors\":1,\"circuit\":1,\"region\":1,\"organizerRegion\":1,\"fedRankValuation\":1,\"nationalValuation\":1,\"fedRank\":1,\"name\":1,\"city\":1,\"startDate\":1,\"endDate\":1,\"firstResult\":1,\"maxResults\":1}}147ad25c14aa9b88f132c65e3c4de2e6992acf37",
 		},
 		{
 			Id:                "STV",
@@ -78,12 +78,12 @@ func GetFederations() []models.Federation {
 		},
 		{
 			Id:                "WTB",
-			Url:               "https://www.wtb-tennis.de/turniere/turnierkalender/app/nuTournaments.html",
+			Url:               "https://www.wtb-tennis.de/wettkampfsport/turniere/turnierkalender.html",
 			Name:              "Württembergischer Tennisbund",
 			Geocoordinates:    models.Geocoordinates{Lat: "48.853488", Lon: "9.1373019"},
 			State:             "Baden-Württemberg",
 			ApiVersion:        "new",
-			TrustedProperties: "a:1:{s:17:\"tournamentsFilter\";a:15:{s:11:\"ageCategory\";i:1;s:15:\"ageGroupJuniors\";i:1;s:15:\"ageGroupSeniors\";i:1;s:7:\"circuit\";i:1;s:16:\"fedRankValuation\";i:1;s:17:\"nationalValuation\";i:1;s:4:\"type\";i:1;s:7:\"fedRank\";i:1;s:6:\"region\";i:1;s:4:\"name\";i:1;s:4:\"city\";i:1;s:9:\"startDate\";i:1;s:7:\"endDate\";i:1;s:11:\"firstResult\";i:1;s:10:\"maxResults\";i:1;}}0084e646e91ed3b7e155957c5d3b286f2602eebc",
+			TrustedProperties: "{\"tournamentsFilter\":{\"ageCategory\":1,\"ageGroupJuniors\":1,\"ageGroupSeniors\":1,\"circuit\":1,\"fedRankValuation\":1,\"nationalValuation\":1,\"type\":1,\"fedRank\":1,\"region\":1,\"name\":1,\"city\":1,\"startDate\":1,\"endDate\":1,\"firstResult\":1,\"maxResults\":1}}159ecd19ddd43b30fbc8e35aea82f7bf7373a592",
 		},
 	}
 	return federations

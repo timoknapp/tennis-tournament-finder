@@ -6,27 +6,189 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 )
 
 var CachedGeocoordinates map[string]models.Geocoordinates
+var LocationCache map[string]models.Geocoordinates
+var OrganizerCache map[string]models.Geocoordinates
 
 func InitCache() {
 	CachedGeocoordinates = make(map[string]models.Geocoordinates)
+	LocationCache = make(map[string]models.Geocoordinates)
+	OrganizerCache = make(map[string]models.Geocoordinates)
+}
+
+// generateLocationCacheKey creates a standardized cache key for location-based caching
+func generateLocationCacheKey(location, state string) string {
+	// Normalize the location string for better cache hits
+	normalized := strings.ToLower(strings.TrimSpace(location))
+	return fmt.Sprintf("loc:%s:%s", normalized, state)
+}
+
+// generateOrganizerCacheKey creates a standardized cache key for organizer-based caching
+func generateOrganizerCacheKey(organizer, state string) string {
+	// Normalize the organizer string for better cache hits
+	normalized := strings.ToLower(strings.TrimSpace(organizer))
+	return fmt.Sprintf("org:%s:%s", normalized, state)
 }
 
 func GetGeocoordinatesFromCache(state string, tournament models.Tournament) models.Geocoordinates {
-	geoCoordinates := CachedGeocoordinates[tournament.Id]
-	if geoCoordinates.Lat == "" && geoCoordinates.Lon == "" && geoCoordinates.DisplayName == "" {
-		fmt.Printf("No Geocoordinate Cache entry found for (%s): '%s'. Fetching data from server.\n", tournament.Id, tournament.Organizer)
-		geoCoordinates = getGeocoordinates(state, tournament)
+	// Priority 1: Check location-based cache if we have a specific location
+	if len(tournament.Location) > 0 {
+		locationKey := generateLocationCacheKey(tournament.Location, state)
+		if cachedGeo, exists := LocationCache[locationKey]; exists {
+			if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
+				fmt.Printf("Cache HIT (location): %s for tournament %s\n", locationKey, tournament.Id)
+				return cachedGeo
+			}
+			// Handle failed location cache entries
+			if cachedGeo.IsFailed && !shouldRetryGeocodingRequest(cachedGeo) {
+				fmt.Printf("Skipping geocoding retry for location (%s): '%s' (failed %d times)\n",
+					tournament.Id, tournament.Location, cachedGeo.FailCount)
+				// Don't return failed location cache, try organizer cache next
+			}
+		}
 	}
+
+	// Priority 2: Check organizer-based cache
+	if len(tournament.Organizer) > 0 {
+		organizerKey := generateOrganizerCacheKey(tournament.Organizer, state)
+		if cachedGeo, exists := OrganizerCache[organizerKey]; exists {
+			if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
+				fmt.Printf("Cache HIT (organizer): %s for tournament %s\n", organizerKey, tournament.Id)
+				return cachedGeo
+			}
+			// Handle failed organizer cache entries
+			if cachedGeo.IsFailed && !shouldRetryGeocodingRequest(cachedGeo) {
+				fmt.Printf("Skipping geocoding retry for organizer (%s): '%s' (failed %d times)\n",
+					tournament.Id, tournament.Organizer, cachedGeo.FailCount)
+				// Don't return failed organizer cache, try tournament cache next
+			}
+		}
+	}
+
+	// Priority 3: Check tournament-specific cache (existing behavior)
+	if cachedGeo, exists := CachedGeocoordinates[tournament.Id]; exists {
+		// If we have successful coordinates, return them
+		if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
+			fmt.Printf("Cache HIT (tournament): %s\n", tournament.Id)
+			return cachedGeo
+		}
+
+		// If this is a failed attempt, check if we should retry
+		if cachedGeo.IsFailed {
+			shouldRetry := shouldRetryGeocodingRequest(cachedGeo)
+			if !shouldRetry {
+				fmt.Printf("Skipping geocoding retry for tournament (%s): '%s' (failed %d times, last attempt: %v)\n",
+					tournament.Id, tournament.Organizer, cachedGeo.FailCount, time.Unix(cachedGeo.LastAttempt, 0))
+				return cachedGeo // Return the failed entry (will fallback to default coords in calling code)
+			}
+			fmt.Printf("Retrying geocoding for tournament (%s): '%s' (retry attempt after %d failures)\n",
+				tournament.Id, tournament.Organizer, cachedGeo.FailCount)
+		}
+	}
+
+	fmt.Printf("No Geocoordinate Cache entry found for (%s): '%s' at '%s'. Fetching data from server.\n",
+		tournament.Id, tournament.Organizer, tournament.Location)
+	geoCoordinates := getGeocoordinates(state, tournament)
 	return geoCoordinates
 }
 
-func saveGeocoordinatesInCache(tournamentId string, geoCoordinates models.Geocoordinates) {
-	CachedGeocoordinates[tournamentId] = geoCoordinates
+// shouldRetryGeocodingRequest determines if a failed geocoding request should be retried
+func shouldRetryGeocodingRequest(cachedGeo models.Geocoordinates) bool {
+	now := time.Now().Unix()
+
+	// Progressive backoff strategy:
+	// 1st failure: retry after 1 hour
+	// 2nd failure: retry after 6 hours
+	// 3rd failure: retry after 1 day
+	// 4th+ failure: retry after 1 week
+
+	var retryInterval int64
+	switch cachedGeo.FailCount {
+	case 1:
+		retryInterval = 3600 // 1 hour
+	case 2:
+		retryInterval = 21600 // 6 hours
+	case 3:
+		retryInterval = 86400 // 1 day
+	default:
+		retryInterval = 604800 // 1 week
+	}
+
+	return (now - cachedGeo.LastAttempt) >= retryInterval
+}
+
+func saveGeocoordinatesInCache(tournament models.Tournament, state string, geoCoordinates models.Geocoordinates) {
+	// Always save to tournament-specific cache (existing behavior)
+	CachedGeocoordinates[tournament.Id] = geoCoordinates
+
+	// Also save to location cache if we have a location
+	if len(tournament.Location) > 0 {
+		locationKey := generateLocationCacheKey(tournament.Location, state)
+		LocationCache[locationKey] = geoCoordinates
+		fmt.Printf("Cached geocoordinates for location key: %s\n", locationKey)
+	}
+
+	// Also save to organizer cache if we have an organizer
+	if len(tournament.Organizer) > 0 {
+		organizerKey := generateOrganizerCacheKey(tournament.Organizer, state)
+		OrganizerCache[organizerKey] = geoCoordinates
+		fmt.Printf("Cached geocoordinates for organizer key: %s\n", organizerKey)
+	}
+}
+
+// GetCacheStatistics returns useful statistics about the geocoding cache
+func GetCacheStatistics() map[string]int {
+	stats := map[string]int{
+		"total_entries":         0,
+		"successful":            0,
+		"failed":                0,
+		"pending_retry":         0,
+		"permanently_failed":    0,
+		"location_cache_size":   len(LocationCache),
+		"organizer_cache_size":  len(OrganizerCache),
+		"tournament_cache_size": len(CachedGeocoordinates),
+	}
+
+	// Count tournament cache statistics
+	for _, geo := range CachedGeocoordinates {
+		stats["total_entries"]++
+
+		if geo.IsFailed {
+			stats["failed"]++
+
+			// Check if this failed entry should be retried
+			if shouldRetryGeocodingRequest(geo) {
+				stats["pending_retry"]++
+			} else if geo.FailCount >= 4 {
+				stats["permanently_failed"]++
+			}
+		} else if geo.Lat != "" && geo.Lon != "" {
+			stats["successful"]++
+		}
+	}
+
+	return stats
+}
+
+// CleanupOldFailedEntries removes very old failed entries to prevent cache bloat
+func CleanupOldFailedEntries() int {
+	cleaned := 0
+	cutoffTime := time.Now().Unix() - (30 * 24 * 3600) // 30 days
+
+	for tournamentId, geo := range CachedGeocoordinates {
+		if geo.IsFailed && geo.FailCount >= 4 && geo.LastAttempt < cutoffTime {
+			delete(CachedGeocoordinates, tournamentId)
+			cleaned++
+		}
+	}
+
+	fmt.Printf("Cleaned up %d old failed geocoding entries\n", cleaned)
+	return cleaned
 }
 
 // extractCityFromOrganizerName intelligently extracts the city name from the organizer string
@@ -294,15 +456,25 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 	// fmt.Printf("Get Geocoordinates for %s (%s)\n", query, tournamentOrganizer)
 	urlFormattedQuery := strings.ReplaceAll(query, " ", "+")
 
+	// Get previous failure count for progressive backoff
+	var previousFailCount int
+	if cachedGeo, exists := CachedGeocoordinates[tournamentId]; exists && cachedGeo.IsFailed {
+		previousFailCount = cachedGeo.FailCount
+	}
+
 	res, err := http.Get(urlOSM + urlFormattedQuery)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("HTTP error for tournament %s: %v\n", tournamentId, err)
+		saveFailedGeocodingAttempt(tournamentId, previousFailCount)
+		return models.Geocoordinates{}
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Read error for tournament %s: %v\n", tournamentId, err)
+		saveFailedGeocodingAttempt(tournamentId, previousFailCount)
+		return models.Geocoordinates{}
 	}
 	// fmt.Println(string(body))
 
@@ -314,10 +486,32 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 		for i := 0; i < len(geoCoords); i++ {
 			if strings.Contains(geoCoords[i].DisplayName, state) {
 				result = geoCoords[i]
-				saveGeocoordinatesInCache(tournamentId, result)
+				// Reset failure tracking on success
+				result.IsFailed = false
+				result.FailCount = 0
+				result.LastAttempt = 0
+				saveGeocoordinatesInCache(tournament, state, result)
+				return result
 			}
 		}
 		// fmt.Printf("Lat: %s, Lon: %s, Name: %s\n", result.Lat, result.Lon, result.DisplayName)
 	}
-	return result
+
+	// No suitable coordinates found - cache this as a failed attempt
+	fmt.Printf("No suitable geocoordinates found for tournament %s in state %s\n", tournamentId, state)
+	saveFailedGeocodingAttempt(tournamentId, previousFailCount)
+	return models.Geocoordinates{}
+}
+
+// saveFailedGeocodingAttempt caches a failed geocoding attempt with retry metadata
+func saveFailedGeocodingAttempt(tournamentId string, previousFailCount int) {
+	failedEntry := models.Geocoordinates{
+		Lat:         "",
+		Lon:         "",
+		DisplayName: "",
+		LastAttempt: time.Now().Unix(),
+		FailCount:   previousFailCount + 1,
+		IsFailed:    true,
+	}
+	CachedGeocoordinates[tournamentId] = failedEntry
 }
