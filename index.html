@@ -30,14 +30,41 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
     
     <link rel="stylesheet" type="text/css" href="css/main.css">
-    <title>Tennis Tournament Finder</title>
+    <title>LK-Turnier Finder</title>
 
-    <script>navigator.serviceWorker.register("service-worker.js")</script> 
+    <script>
+        // Enhanced Service Worker registration with update handling
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(registration => {
+                    console.log('SW registered:', registration);
+                    
+                    // Check for updates periodically
+                    setInterval(() => {
+                        registration.update();
+                    }, 60000); // Check every minute
+                    
+                    // Handle updates
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        if (newWorker) {
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'activated') {
+                                    // Reload the page to get the latest version
+                                    window.location.reload();
+                                }
+                            });
+                        }
+                    });
+                })
+                .catch(error => console.log('SW registration failed:', error));
+        }
+    </script> 
 </head>
 <body>
     <div class="sideBar">
         <div class="sideBarElement title">
-            🎾 Tennis Tournament Finder
+            🎾 LK-Turnier Finder
             <button id="filterToggle" class="filterToggleBtn" onclick="toggleFilters()">Filter ⚙️</button>
         </div>
         <div class="sideBarElement filter" id="filterContainer">

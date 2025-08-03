@@ -277,7 +277,7 @@ body {
 /* Absolute Center Spinner */
 .loading {
     position: fixed;
-    z-index: 999;
+    z-index: 99999; /* Increased z-index to be above filter sidebar */
     height: 2em;
     width: 2em;
     overflow: show;

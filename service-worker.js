@@ -1,5 +1,6 @@
 
     // Based off of https://github.com/pwa-builder/PWABuilder/blob/main/docs/sw.js
+    // Version: 1.1.0 - Update this when you want to force cache refresh
 
     /*
       Welcome to our basic Service Worker! This Service Worker offers a basic offline experience
@@ -16,6 +17,9 @@
         - Push Notifications: https://microsoft.github.io/win-student-devs/#/30DaysOfPWA/advanced-capabilities/07?id=push-notifications-on-the-web
         - Badges: https://microsoft.github.io/win-student-devs/#/30DaysOfPWA/advanced-capabilities/07?id=application-badges
     */
+
+    const CACHE_VERSION = 'v1.1.0';
+    const CACHE_NAME = `tennis-tournament-finder-${CACHE_VERSION}`;
 
     const HOSTNAME_WHITELIST = [
         self.location.hostname,
@@ -47,14 +51,39 @@
     }
 
     /**
+     *  @Lifecycle Install
+     *  Triggers when new SW is installed
+     */
+    self.addEventListener('install', event => {
+      // Skip waiting and activate immediately
+      self.skipWaiting();
+    });
+
+    /**
      *  @Lifecycle Activate
      *  New one activated when old isnt being used.
      *
      *  waitUntil(): activating ====> activated
      */
     self.addEventListener('activate', event => {
-      event.waitUntil(self.clients.claim())
-    })
+      event.waitUntil(
+        Promise.all([
+          // Clear old caches
+          caches.keys().then(cacheNames => {
+            return Promise.all(
+              cacheNames.map(cacheName => {
+                if (cacheName !== CACHE_NAME) {
+                  console.log('Deleting old cache:', cacheName);
+                  return caches.delete(cacheName);
+                }
+              })
+            );
+          }),
+          // Take control of all clients immediately
+          self.clients.claim()
+        ])
+      );
+    });
 
     /**
      *  @Functional Fetch
@@ -85,7 +114,7 @@
 
         // Update the cache with the version we fetched (only for ok status)
         event.waitUntil(
-        Promise.all([fetchedCopy, caches.open("pwa-cache")])
+        Promise.all([fetchedCopy, caches.open(CACHE_NAME)])
             .then(([response, cache]) => response.ok && cache.put(event.request, response))
             .catch(_ => { /* eat any errors */ })
         )

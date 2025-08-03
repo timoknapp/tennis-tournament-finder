@@ -1,0 +1,127 @@
+name: Update Cache Version
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'index.html'
+      - 'manifest.json'
+      - 'manifest-local.json'
+      - 'css/**'
+      - 'script/**'
+      - 'images/**'
+      - 'service-worker.js'
+      - '!backend/**'  # Exclude backend directory
+  workflow_dispatch:
+
+jobs:
+  update-cache-version:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Generate new cache version
+      id: cache-version
+      run: |
+        # Generate timestamp-based version
+        TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+        COMMIT_SHORT=$(git rev-parse --short HEAD)
+        NEW_VERSION="v${TIMESTAMP}-${COMMIT_SHORT}"
+        echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+        echo "Generated new cache version: ${NEW_VERSION}"
+
+    - name: Update service worker cache version
+      run: |
+        # Update the CACHE_VERSION in service-worker.js
+        NEW_VERSION="${{ steps.cache-version.outputs.new_version }}"
+        
+        # Use sed to replace the cache version line
+        sed -i "s/const CACHE_VERSION = 'v[^']*';/const CACHE_VERSION = '${NEW_VERSION}';/" service-worker.js
+        
+        # Verify the change
+        echo "Updated service-worker.js:"
+        grep "const CACHE_VERSION" service-worker.js
+
+    - name: Update manifest version (optional)
+      run: |
+        # Also update version in manifest.json if it exists
+        if [ -f "manifest.json" ]; then
+          NEW_VERSION="${{ steps.cache-version.outputs.new_version }}"
+          # Add or update version field in manifest.json
+          if grep -q '"version"' manifest.json; then
+            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" manifest.json
+          else
+            # Add version field after name field
+            sed -i '/"name":/a\  "version": "'${NEW_VERSION}'",' manifest.json
+          fi
+          echo "Updated manifest.json:"
+          grep -A1 -B1 '"version"' manifest.json || echo "Version field added to manifest.json"
+        fi
+
+    - name: Check for changes
+      id: check-changes
+      run: |
+        if git diff --quiet; then
+          echo "No changes made to cache version"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        else
+          echo "Changes detected"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Commit and push changes
+      if: steps.check-changes.outputs.has_changes == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add service-worker.js manifest.json
+        git commit -m "🚀 Auto-update cache version to ${{ steps.cache-version.outputs.new_version }}" || exit 0
+        git push
+
+    - name: Create deployment comment
+      if: steps.check-changes.outputs.has_changes == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const sha = context.sha;
+          
+          // Find the associated PR or create a commit comment
+          try {
+            const { data: pulls } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head: `${owner}:${context.ref.replace('refs/heads/', '')}`
+            });
+            
+            if (pulls.length > 0) {
+              // Comment on PR
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pulls[0].number,
+                body: `🚀 **Cache version updated!**\n\nNew version: \`${{ steps.cache-version.outputs.new_version }}\`\n\nUsers will automatically receive the latest version within 60 seconds of deployment.`
+              });
+            } else {
+              // Comment on commit
+              await github.rest.repos.createCommitComment({
+                owner,
+                repo,
+                commit_sha: sha,
+                body: `🚀 **Cache version updated!**\n\nNew version: \`${{ steps.cache-version.outputs.new_version }}\`\n\nUsers will automatically receive the latest version within 60 seconds of deployment.`
+              });
+            }
+          } catch (error) {
+            console.log('Could not create comment:', error.message);
+          }

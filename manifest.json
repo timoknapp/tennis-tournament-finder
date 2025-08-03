@@ -1,6 +1,7 @@
 {
   "id": "io.github.timoknapp.tennis-tournament-finder",
   "name": "Tennis Tournament Finder",
+  "version": "1.0.0",
   "language": "de-DE",
   "short_name": "TTF",
   "description": "Finde Tennis Turniere in deiner Nähe",
