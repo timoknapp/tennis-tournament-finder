@@ -13,14 +13,14 @@ NEW_VERSION="v${TIMESTAMP}-${COMMIT_SHORT}"
 echo "New cache version: ${NEW_VERSION}"
 
 # Update service-worker.js
-if [ -f "service-worker.js" ]; then
+if [ -f "../../service-worker.js" ]; then
     # Update the CACHE_VERSION in service-worker.js
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s/const CACHE_VERSION = 'v[^']*';/const CACHE_VERSION = '${NEW_VERSION}';/" service-worker.js
+        sed -i '' "s/const CACHE_VERSION = 'v[^']*';/const CACHE_VERSION = '${NEW_VERSION}';/" ../../service-worker.js
     else
         # Linux
-        sed -i "s/const CACHE_VERSION = 'v[^']*';/const CACHE_VERSION = '${NEW_VERSION}';/" service-worker.js
+        sed -i "s/const CACHE_VERSION = 'v[^']*';/const CACHE_VERSION = '${NEW_VERSION}';/" ../../service-worker.js
     fi
     echo "✅ Updated service-worker.js"
 else
@@ -29,21 +29,21 @@ else
 fi
 
 # Update manifest.json
-if [ -f "manifest.json" ]; then
+if [ -f "../../manifest.json" ]; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" manifest.json
+        sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" ../../manifest.json
     else
         # Linux
-        sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" manifest.json
+        sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" ../../manifest.json
     fi
     echo "✅ Updated manifest.json"
 fi
 
 echo ""
 echo "📄 Current versions:"
-grep "const CACHE_VERSION" service-worker.js
-grep "\"version\"" manifest.json
+grep "const CACHE_VERSION" ../../service-worker.js
+grep "\"version\"" ../../manifest.json
 
 echo ""
 echo "🎉 Cache version update complete!"
