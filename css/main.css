@@ -451,3 +451,144 @@ body {
 .federationControls button:hover {
     background: #e9e9e9;
 }
+
+/* Update Notification Popup Styles */
+.update-notification {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 99999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.update-popup {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    animation: slideUp 0.3s ease-out;
+}
+
+.update-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    display: block;
+}
+
+.update-title {
+    margin: 0 0 12px 0;
+    font-size: 20px;
+    font-weight: bold;
+    color: #1a73e8;
+}
+
+.update-message {
+    margin: 0 0 24px 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+}
+
+.update-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.update-btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    min-width: 120px;
+}
+
+.update-btn:focus {
+    outline: 2px solid #1a73e8;
+    outline-offset: 2px;
+}
+
+.update-now {
+    background-color: #1a73e8;
+    color: white;
+}
+
+.update-now:hover {
+    background-color: #1557b0;
+}
+
+.update-later {
+    background-color: #f8f9fa;
+    color: #5f6368;
+    border: 1px solid #dadce0;
+}
+
+.update-later:hover {
+    background-color: #e8eaed;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mobile-friendly styles for update popup */
+@media screen and (orientation:portrait) {
+    .update-notification {
+        padding: 4vw;
+    }
+    
+    .update-popup {
+        padding: 6vw;
+        border-radius: 3vw;
+    }
+    
+    .update-icon {
+        font-size: 12vw;
+        margin-bottom: 4vw;
+    }
+    
+    .update-title {
+        font-size: 5vw;
+        margin-bottom: 3vw;
+    }
+    
+    .update-message {
+        font-size: 3.5vw;
+        margin-bottom: 6vw;
+        line-height: 1.4;
+    }
+    
+    .update-buttons {
+        flex-direction: column;
+        gap: 3vw;
+    }
+    
+    .update-btn {
+        padding: 3vw 6vw;
+        font-size: 3.5vw;
+        border-radius: 1.5vw;
+        min-width: auto;
+        width: 100%;
+    }
+}
