@@ -76,7 +76,7 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
                                 `).join("")}
                             </table>
                         </div>
-                        <a href="#" onclick="toggleCompetitionDetails('${tournament.id}'); return false;" style="font-size: 12px; color: #0066cc;">
+                        <a href="#" onclick="toggleCompetitionDetails('${tournament.id}'); return false;" class="popup-info-text" style="color: #0066cc; text-decoration: none;">
                             <span id="toggle-text-${tournament.id}">▼ Konkurrenzen anzeigen (${validEntries.length} Einträge)</span>
                         </a>`;
                     }
@@ -84,11 +84,15 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
 
                 const marker = L.marker([tournament["lat"], tournament["lon"]])
                 .bindPopup(`
-                <span class="popupTitle"><b>${tournament["title"]}</b></span><br><br>
-                <b>Datum:</b> ${tournament["date"]}<br>
-                <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br>
-                <b>Anmeldung:</b> <a target="_blank" href="${tournament["url"]}">auf tennis.de (login erforderlich)</a><br>
-                <br>${competitionDetails}
+                <span class="popupTitle">${tournament["title"]}</span><br><br>
+                <div class="popup-info-text">
+                    <b>Datum:</b> ${tournament["date"]}<br>
+                    <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br>
+                </div>
+                <div class="button-container">
+                    <a href="${tournament["url"]}" target="_blank" class="signup-button">Anmelden</a>
+                </div>
+                ${competitionDetails}
                 `)
                 markers.addLayer(marker);
             }
