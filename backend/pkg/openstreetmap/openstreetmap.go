@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 )
 
@@ -41,12 +42,12 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 		locationKey := generateLocationCacheKey(tournament.Location, state)
 		if cachedGeo, exists := LocationCache[locationKey]; exists {
 			if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
-				fmt.Printf("Cache HIT (location): %s for tournament %s\n", locationKey, tournament.Id)
+				logger.Debug("Cache HIT (location): %s for tournament %s", locationKey, tournament.Id)
 				return cachedGeo
 			}
 			// Handle failed location cache entries
 			if cachedGeo.IsFailed && !shouldRetryGeocodingRequest(cachedGeo) {
-				fmt.Printf("Skipping geocoding retry for location (%s): '%s' (failed %d times)\n",
+				logger.Debug("Skipping geocoding retry for location (%s): '%s' (failed %d times)",
 					tournament.Id, tournament.Location, cachedGeo.FailCount)
 				// Don't return failed location cache, try organizer cache next
 			}
@@ -58,12 +59,12 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 		organizerKey := generateOrganizerCacheKey(tournament.Organizer, state)
 		if cachedGeo, exists := OrganizerCache[organizerKey]; exists {
 			if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
-				fmt.Printf("Cache HIT (organizer): %s for tournament %s\n", organizerKey, tournament.Id)
+				logger.Debug("Cache HIT (organizer): %s for tournament %s", organizerKey, tournament.Id)
 				return cachedGeo
 			}
 			// Handle failed organizer cache entries
 			if cachedGeo.IsFailed && !shouldRetryGeocodingRequest(cachedGeo) {
-				fmt.Printf("Skipping geocoding retry for organizer (%s): '%s' (failed %d times)\n",
+				logger.Debug("Skipping geocoding retry for organizer (%s): '%s' (failed %d times)",
 					tournament.Id, tournament.Organizer, cachedGeo.FailCount)
 				// Don't return failed organizer cache, try tournament cache next
 			}
@@ -187,7 +188,7 @@ func CleanupOldFailedEntries() int {
 		}
 	}
 
-	fmt.Printf("Cleaned up %d old failed geocoding entries\n", cleaned)
+	logger.Info("Cleaned up %d old failed geocoding entries", cleaned)
 	return cleaned
 }
 
