@@ -75,7 +75,7 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 	if cachedGeo, exists := CachedGeocoordinates[tournament.Id]; exists {
 		// If we have successful coordinates, return them
 		if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
-			fmt.Printf("Cache HIT (tournament): %s\n", tournament.Id)
+			logger.Debug("Cache HIT (tournament): %s", tournament.Id)
 			return cachedGeo
 		}
 
@@ -83,16 +83,16 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 		if cachedGeo.IsFailed {
 			shouldRetry := shouldRetryGeocodingRequest(cachedGeo)
 			if !shouldRetry {
-				fmt.Printf("Skipping geocoding retry for tournament (%s): '%s' (failed %d times, last attempt: %v)\n",
+				logger.Debug("Skipping geocoding retry for tournament (%s): '%s' (failed %d times, last attempt: %v)",
 					tournament.Id, tournament.Organizer, cachedGeo.FailCount, time.Unix(cachedGeo.LastAttempt, 0))
 				return cachedGeo // Return the failed entry (will fallback to default coords in calling code)
 			}
-			fmt.Printf("Retrying geocoding for tournament (%s): '%s' (retry attempt after %d failures)\n",
+			logger.Debug("Retrying geocoding for tournament (%s): '%s' (retry attempt after %d failures)",
 				tournament.Id, tournament.Organizer, cachedGeo.FailCount)
 		}
 	}
 
-	fmt.Printf("No Geocoordinate Cache entry found for (%s): '%s' at '%s'. Fetching data from server.\n",
+	logger.Debug("No Geocoordinate Cache entry found for (%s): '%s' at '%s'. Fetching data from server.",
 		tournament.Id, tournament.Organizer, tournament.Location)
 	geoCoordinates := getGeocoordinates(state, tournament)
 	return geoCoordinates
@@ -131,14 +131,14 @@ func saveGeocoordinatesInCache(tournament models.Tournament, state string, geoCo
 	if len(tournament.Location) > 0 {
 		locationKey := generateLocationCacheKey(tournament.Location, state)
 		LocationCache[locationKey] = geoCoordinates
-		fmt.Printf("Cached geocoordinates for location key: %s\n", locationKey)
+		logger.Debug("Cached geocoordinates for location key: %s", locationKey)
 	}
 
 	// Also save to organizer cache if we have an organizer
 	if len(tournament.Organizer) > 0 {
 		organizerKey := generateOrganizerCacheKey(tournament.Organizer, state)
 		OrganizerCache[organizerKey] = geoCoordinates
-		fmt.Printf("Cached geocoordinates for organizer key: %s\n", organizerKey)
+		logger.Debug("Cached geocoordinates for organizer key: %s", organizerKey)
 	}
 }
 
@@ -454,7 +454,6 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 	} else {
 		query = extractCityFromOrganizerName(tournamentOrganizer)
 	}
-	// fmt.Printf("Get Geocoordinates for %s (%s)\n", query, tournamentOrganizer)
 	urlFormattedQuery := strings.ReplaceAll(query, " ", "+")
 
 	// Get previous failure count for progressive backoff
@@ -465,7 +464,7 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 
 	res, err := http.Get(urlOSM + urlFormattedQuery)
 	if err != nil {
-		fmt.Printf("HTTP error for tournament %s: %v\n", tournamentId, err)
+		logger.Error("HTTP error for tournament %s: %v", tournamentId, err)
 		saveFailedGeocodingAttempt(tournamentId, previousFailCount)
 		return models.Geocoordinates{}
 	}
@@ -473,11 +472,10 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		fmt.Printf("Read error for tournament %s: %v\n", tournamentId, err)
+		logger.Error("Read error for tournament %s: %v", tournamentId, err)
 		saveFailedGeocodingAttempt(tournamentId, previousFailCount)
 		return models.Geocoordinates{}
 	}
-	// fmt.Println(string(body))
 
 	var geoCoords []models.Geocoordinates
 	var result models.Geocoordinates
@@ -495,11 +493,10 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 				return result
 			}
 		}
-		// fmt.Printf("Lat: %s, Lon: %s, Name: %s\n", result.Lat, result.Lon, result.DisplayName)
 	}
 
 	// No suitable coordinates found - cache this as a failed attempt
-	fmt.Printf("No suitable geocoordinates found for tournament %s in state %s\n", tournamentId, state)
+	logger.Warn("No suitable geocoordinates found for tournament %s in state %s", tournamentId, state)
 	saveFailedGeocodingAttempt(tournamentId, previousFailCount)
 	return models.Geocoordinates{}
 }

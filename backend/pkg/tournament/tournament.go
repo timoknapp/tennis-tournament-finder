@@ -161,10 +161,6 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 	}
 	defer res.Body.Close()
 
-	// fmt.Println("request URL:", req.URL)
-	// fmt.Println("response Status:", res.Status)
-	// fmt.Println("response Headers:", res.Header)
-
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
 		logger.Error("Failed to parse HTML document: %v", err)
@@ -395,7 +391,6 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 		}
 	}
 
-	// fmt.Printf("%q\n", tournaments)
 	return tournaments
 }
 
@@ -426,7 +421,7 @@ func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom s
 	req, err := http.NewRequest("POST", url, payload)
 
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("Failed to create HTTP request: %v", err)
 		return tournaments
 	}
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
