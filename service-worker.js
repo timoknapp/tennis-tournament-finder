@@ -55,8 +55,8 @@
      *  Triggers when new SW is installed
      */
     self.addEventListener('install', event => {
-      // Skip waiting and activate immediately
-      self.skipWaiting();
+      // Don't skip waiting automatically - wait for user consent
+      console.log('Service Worker installing...');
     });
 
     /**
@@ -81,8 +81,25 @@
           }),
           // Take control of all clients immediately
           self.clients.claim()
-        ])
+        ]).then(() => {
+          // Notify all clients that the SW has been updated
+          return self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+              client.postMessage({ type: 'SW_UPDATED' });
+            });
+          });
+        })
       );
+    });
+
+    /**
+     * Listen for messages from the main thread
+     */
+    self.addEventListener('message', event => {
+      if (event.data && event.data.type === 'SKIP_WAITING') {
+        console.log('Received SKIP_WAITING message, activating new service worker...');
+        self.skipWaiting();
+      }
     });
 
     /**

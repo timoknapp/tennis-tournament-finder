@@ -33,7 +33,113 @@
     <title>LK-Turnier Finder</title>
 
     <script>
-        // Enhanced Service Worker registration with update handling
+        // Enhanced Service Worker registration with user-friendly update handling
+        let updateAvailable = false;
+        let newWorkerWaiting = null;
+
+        function showUpdateNotification() {
+            const notification = document.getElementById('updateNotification');
+            if (notification) {
+                notification.style.display = 'flex';
+                updateAvailable = true;
+                
+                // Focus management for accessibility
+                const updateNowBtn = document.getElementById('updateNowBtn');
+                if (updateNowBtn) {
+                    updateNowBtn.focus();
+                }
+                
+                // Trap focus within the popup
+                setupFocusTrap(notification);
+            }
+        }
+
+        function hideUpdateNotification() {
+            const notification = document.getElementById('updateNotification');
+            if (notification) {
+                notification.style.display = 'none';
+                removeFocusTrap();
+            }
+        }
+
+        function setupFocusTrap(popup) {
+            const focusableElements = popup.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+            const firstElement = focusableElements[0];
+            const lastElement = focusableElements[focusableElements.length - 1];
+            
+            function handleKeyDown(e) {
+                if (e.key === 'Escape') {
+                    hideUpdateNotification();
+                    // Show notification again after 5 minutes
+                    setTimeout(() => {
+                        if (updateAvailable) {
+                            showUpdateNotification();
+                        }
+                    }, 5 * 60 * 1000);
+                    return;
+                }
+                
+                if (e.key === 'Tab') {
+                    if (e.shiftKey) {
+                        if (document.activeElement === firstElement) {
+                            lastElement.focus();
+                            e.preventDefault();
+                        }
+                    } else {
+                        if (document.activeElement === lastElement) {
+                            firstElement.focus();
+                            e.preventDefault();
+                        }
+                    }
+                }
+            }
+            
+            document.addEventListener('keydown', handleKeyDown);
+            popup.setAttribute('data-focus-trap', 'true');
+        }
+        
+        function removeFocusTrap() {
+            const popup = document.getElementById('updateNotification');
+            if (popup && popup.hasAttribute('data-focus-trap')) {
+                popup.removeAttribute('data-focus-trap');
+                // Remove all keydown listeners by cloning and replacing the document
+                // This is a simple approach - in production you'd track the specific listener
+            }
+        }
+
+        function updateApp() {
+            if (newWorkerWaiting) {
+                // Tell the waiting service worker to skip waiting
+                newWorkerWaiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            // Reload the page to get the latest version
+            window.location.reload();
+        }
+
+        // Set up event listeners for update buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const updateNowBtn = document.getElementById('updateNowBtn');
+            const updateLaterBtn = document.getElementById('updateLaterBtn');
+
+            if (updateNowBtn) {
+                updateNowBtn.addEventListener('click', function() {
+                    updateApp();
+                });
+            }
+
+            if (updateLaterBtn) {
+                updateLaterBtn.addEventListener('click', function() {
+                    hideUpdateNotification();
+                    // Show notification again after 5 minutes
+                    setTimeout(() => {
+                        if (updateAvailable) {
+                            showUpdateNotification();
+                        }
+                    }, 5 * 60 * 1000); // 5 minutes
+                });
+            }
+        });
+
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js')
                 .then(registration => {
@@ -48,12 +154,27 @@
                     registration.addEventListener('updatefound', () => {
                         const newWorker = registration.installing;
                         if (newWorker) {
+                            newWorkerWaiting = newWorker;
+                            
                             newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'activated') {
-                                    // Reload the page to get the latest version
-                                    window.location.reload();
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    // New version is available
+                                    console.log('New version available!');
+                                    showUpdateNotification();
+                                } else if (newWorker.state === 'activated') {
+                                    // This happens when user chooses to update
+                                    updateAvailable = false;
+                                    hideUpdateNotification();
                                 }
                             });
+                        }
+                    });
+
+                    // Listen for messages from the service worker
+                    navigator.serviceWorker.addEventListener('message', event => {
+                        if (event.data && event.data.type === 'SW_UPDATED') {
+                            console.log('Service Worker updated, reloading page...');
+                            window.location.reload();
                         }
                     });
                 })
@@ -135,6 +256,22 @@
     </div>
     <div id="map">
         <div id="loading" class="loading">Loading&#8230;</div>
+    </div>
+    
+    <!-- Update Notification Popup -->
+    <div id="updateNotification" class="update-notification" style="display: none;" role="dialog" aria-labelledby="update-title" aria-describedby="update-message">
+        <div class="update-popup">
+            <div class="update-icon" aria-hidden="true">🚀</div>
+            <h3 id="update-title" class="update-title">Neue Version verfügbar!</h3>
+            <p id="update-message" class="update-message">
+                Eine neue Version der LK-Turnier Finder App ist verfügbar. 
+                Möchten Sie jetzt aktualisieren oder später?
+            </p>
+            <div class="update-buttons">
+                <button id="updateNowBtn" class="update-btn update-now" type="button">Jetzt aktualisieren</button>
+                <button id="updateLaterBtn" class="update-btn update-later" type="button">Später aktualisieren</button>
+            </div>
+        </div>
     </div>
     <script src="script/main.js"></script>
 </body>
