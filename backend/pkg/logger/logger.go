@@ -61,7 +61,7 @@ var defaultLogger *Logger
 
 func init() {
 	// Get log level from environment variable, default to INFO
-	logLevelStr := os.Getenv("LOG_LEVEL")
+	logLevelStr := os.Getenv("TTF_LOG_LEVEL")
 	if logLevelStr == "" {
 		logLevelStr = "INFO"
 	}
