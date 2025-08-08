@@ -58,7 +58,7 @@ go run ./cmd/main.go
 
 ### Log Level Configuration
 
-The backend supports configurable log levels via the `LOG_LEVEL` environment variable:
+The backend supports configurable log levels via the `TTF_LOG_LEVEL` environment variable:
 
 **Available Log Levels:**
 
@@ -71,16 +71,16 @@ The backend supports configurable log levels via the `LOG_LEVEL` environment var
 
 ```bash
 # Debug mode (shows everything)
-LOG_LEVEL=DEBUG go run ./cmd/main.go
+TTF_LOG_LEVEL=DEBUG go run ./cmd/main.go
 
 # Production mode (default)
-LOG_LEVEL=INFO go run ./cmd/main.go
+TTF_LOG_LEVEL=INFO go run ./cmd/main.go
 
 # Minimal logging (errors only)
-LOG_LEVEL=ERROR go run ./cmd/main.go
+TTF_LOG_LEVEL=ERROR go run ./cmd/main.go
 
 # Set persistently in your shell
-export LOG_LEVEL=DEBUG
+export TTF_LOG_LEVEL=DEBUG
 go run ./cmd/main.go
 ```
 
@@ -93,6 +93,19 @@ go run ./cmd/main.go
 ```
 
 All timestamps are in UTC for consistency across time zones.
+
+### Scheduler
+
+Enable the in-process scheduler purely via env vars (no admin endpoint required):
+
+```bash
+export TTF_SCHEDULER_ENABLED=true
+export TTF_SCHEDULER_CRON="0 2 * * *"         # default: 02:00 daily
+export TTF_SCHEDULER_COMP_TYPE=""              # optional
+export TTF_SCHEDULER_FEDERATIONS=""            # optional
+```
+
+For more details, see docs/scheduler.md.
 
 ## FAQ
 
