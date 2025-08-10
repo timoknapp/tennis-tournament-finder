@@ -18,7 +18,7 @@
         - Badges: https://microsoft.github.io/win-student-devs/#/30DaysOfPWA/advanced-capabilities/07?id=application-badges
     */
 
-    const CACHE_VERSION = 'v20250806-125034-feb7505';
+    const CACHE_VERSION = 'v20250810-123027-eea4fcc';
     const CACHE_NAME = `tennis-tournament-finder-${CACHE_VERSION}`;
 
     const HOSTNAME_WHITELIST = [
