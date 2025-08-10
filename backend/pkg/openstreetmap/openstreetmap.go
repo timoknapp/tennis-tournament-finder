@@ -103,21 +103,21 @@ func shouldRetryGeocodingRequest(cachedGeo models.Geocoordinates) bool {
 	now := time.Now().Unix()
 
 	// Progressive backoff strategy:
-	// 1st failure: retry after 1 hour
-	// 2nd failure: retry after 6 hours
-	// 3rd failure: retry after 1 day
-	// 4th+ failure: retry after 1 week
+	// 1st failure: retry after 1 day
+	// 2nd failure: retry after 3 days
+	// 3rd failure: retry after 1 week
+	// 4th+ failure: retry after 2 weeks
 
 	var retryInterval int64
 	switch cachedGeo.FailCount {
 	case 1:
-		retryInterval = 3600 // 1 hour
-	case 2:
-		retryInterval = 21600 // 6 hours
-	case 3:
 		retryInterval = 86400 // 1 day
-	default:
+	case 2:
+		retryInterval = 259200 // 3 days
+	case 3:
 		retryInterval = 604800 // 1 week
+	default:
+		retryInterval = 1209600 // 2 weeks
 	}
 
 	return (now - cachedGeo.LastAttempt) >= retryInterval
