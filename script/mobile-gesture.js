@@ -76,27 +76,21 @@
   function onTouchEnd(e) {
     if (!holdZoomActive) return;
 
-    // Compute final center that keeps the anchor under the finger at the final zoom
-    const finalState = computeZoomState(anchorLatLng, anchorContainerPt, desiredZoom);
-
-    // Commit the final view (no animation to prevent a second jump)
-    map.setView(finalState.center, finalState.zoom, { animate: false });
-
-    // Re-enable dragging
-    map.dragging.enable();
-
-    // If the user just tapped (no drag), treat it as classic double-tap zoom-in with animation
-    if (!movedEnoughForDrag) {
-      if (anchorLatLng) {
-        if (typeof map.setZoomAround === 'function') {
-          map.setZoomAround(anchorLatLng, clamp(map.getZoom() + 1, map.getMinZoom(), map.getMaxZoom()));
-        } else {
-          map.zoomIn(1);
-        }
+    // If the user actually dragged, commit to the final zoom/center (no animation)
+    if (movedEnoughForDrag) {
+      const finalState = computeZoomState(anchorLatLng, anchorContainerPt, desiredZoom);
+      map.setView(finalState.center, finalState.zoom, { animate: false });
+    } else {
+      // If it was just a quick double-tap, do the classic zoom-in with animation
+      if (anchorLatLng && typeof map.setZoomAround === 'function') {
+        map.setZoomAround(anchorLatLng, clamp(map.getZoom() + 1, map.getMinZoom(), map.getMaxZoom()));
       } else {
         map.zoomIn(1);
       }
     }
+
+    // Re-enable dragging
+    map.dragging.enable();
 
     reset();
     e.preventDefault();
@@ -137,11 +131,9 @@
     const state = computeZoomState(anchorLatLng, anchorContainerPt, desiredZoom);
 
     if (canUseInternalZoomAnim) {
-      // Use Leaflet's own zoom animation pipeline (same as pinch)
-      const scale = map.getZoomScale(state.zoom, startZoom);
+      // IMPORTANT: pass zoom (not scale). This mirrors Leaflet's TouchZoom handler.
       try {
-        // This continuously updates the CSS transform without committing zoom
-        map._animateZoom(state.center, scale, anchorContainerPt);
+        map._animateZoom(state.center, state.zoom, anchorContainerPt);
       } catch (_) {
         // Fallback if Leaflet internals differ
         setZoomAroundNoAnim(anchorLatLng, state.zoom);
