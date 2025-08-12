@@ -177,6 +177,13 @@
                             window.location.reload();
                         }
                     });
+
+                    // Show the popup if an update is already waiting (e.g., after a reload)
+                    if (registration.waiting && navigator.serviceWorker.controller) {
+                        newWorkerWaiting = registration.waiting;
+                        updateAvailable = true;
+                        showUpdateNotification();
+                    }
                 })
                 .catch(error => console.log('SW registration failed:', error));
         }
