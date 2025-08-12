@@ -6,46 +6,56 @@
 
   const container = map.getContainer();
 
+  // Use the same transform pipeline Leaflet uses for pinch if available
+  const canUseInternalZoomAnim = !!(map._zoomAnimated && typeof map._animateZoom === 'function');
+
   let lastTapTime = 0;
   const doubleTapThreshold = 300; // ms
-  let secondTapLatLng = null;
 
   let holdZoomActive = false;
+  let movedEnoughForDrag = false;
+
   let startY = 0;
   let startZoom = 0;
+  let startCenter = null;
 
-  // Easing + state for smoother, continuous zooming
   let desiredZoom = 0;
-  let easedZoom = 0;
-  let appliedZoom = 0;
-  const easeAlpha = 0.35;   // higher => faster easing
-  const applyEpsilon = 0.001;
+
+  let anchorLatLng = null;
+  let anchorContainerPt = null;
 
   let rafPending = false;
-  let latestDY = 0;
-
   const dragActivationThreshold = 10; // px
-  let movedEnoughForDrag = false;
+  const sensitivity = 0.01; // tune to taste (higher => faster zoom)
 
   function onTouchStart(e) {
     if (e.touches.length !== 1) return;
+
     const now = Date.now();
     const elapsed = now - lastTapTime;
 
     if (elapsed < doubleTapThreshold) {
-      // Second tap detected; start hold-to-zoom mode
+      // Second tap detected -> enter hold-to-zoom mode
       const t = e.touches[0];
-      secondTapLatLng = map.mouseEventToLatLng({ clientX: t.clientX, clientY: t.clientY });
+      const pseudoMouseEvt = { clientX: t.clientX, clientY: t.clientY };
+
+      anchorContainerPt = map.mouseEventToContainerPoint(pseudoMouseEvt);
+      anchorLatLng = map.containerPointToLatLng(anchorContainerPt);
+
       holdZoomActive = true;
+      movedEnoughForDrag = false;
+
       startY = t.clientY;
       startZoom = map.getZoom();
+      startCenter = map.getCenter();
       desiredZoom = startZoom;
-      easedZoom = startZoom;
-      appliedZoom = startZoom;
-      movedEnoughForDrag = false;
+
+      // Stop any ongoing animations; disable dragging during the gesture
+      map.stop();
       map.dragging.disable();
-      e.preventDefault();
+
       ensureRAF();
+      e.preventDefault();
     } else {
       lastTapTime = now;
     }
@@ -53,61 +63,36 @@
 
   function onTouchMove(e) {
     if (!holdZoomActive || e.touches.length !== 1) return;
+
     const dy = e.touches[0].clientY - startY;
     if (Math.abs(dy) > dragActivationThreshold) movedEnoughForDrag = true;
-    latestDY = dy;
 
-    // Convert vertical drag to a desired zoom level
-    const sensitivity = 0.01; // slightly lower for finer control
-    desiredZoom = clamp(startZoom + latestDY * sensitivity, map.getMinZoom(), map.getMaxZoom());
+    desiredZoom = clamp(startZoom + dy * sensitivity, map.getMinZoom(), map.getMaxZoom());
 
     ensureRAF();
     e.preventDefault();
   }
 
-  function tick() {
-    rafPending = false;
-    if (!holdZoomActive) return;
-
-    // Ease towards desired zoom for continuous, non-steppy feel
-    easedZoom += (desiredZoom - easedZoom) * easeAlpha;
-
-    if (Math.abs(easedZoom - appliedZoom) > applyEpsilon) {
-      if (secondTapLatLng) {
-        map.setZoomAround(secondTapLatLng, easedZoom);
-      } else {
-        map.setZoom(easedZoom);
-      }
-      appliedZoom = easedZoom;
-    }
-
-    // Continue the loop while active or while we still have easing to settle
-    if (holdZoomActive || Math.abs(desiredZoom - easedZoom) > applyEpsilon) {
-      ensureRAF();
-    }
-  }
-
   function onTouchEnd(e) {
     if (!holdZoomActive) return;
 
-    // Finish easing to the last desired zoom
-    desiredZoom = clamp(desiredZoom, map.getMinZoom(), map.getMaxZoom());
-    easedZoom = desiredZoom;
-    if (Math.abs(easedZoom - appliedZoom) > applyEpsilon) {
-      if (secondTapLatLng) {
-        map.setZoomAround(secondTapLatLng, easedZoom);
-      } else {
-        map.setZoom(easedZoom);
-      }
-      appliedZoom = easedZoom;
-    }
+    // Compute final center that keeps the anchor under the finger at the final zoom
+    const finalState = computeZoomState(anchorLatLng, anchorContainerPt, desiredZoom);
 
+    // Commit the final view (no animation to prevent a second jump)
+    map.setView(finalState.center, finalState.zoom, { animate: false });
+
+    // Re-enable dragging
     map.dragging.enable();
 
-    // If user didn’t drag far enough, treat as quick double-tap zoom-in
+    // If the user just tapped (no drag), treat it as classic double-tap zoom-in with animation
     if (!movedEnoughForDrag) {
-      if (secondTapLatLng) {
-        map.setZoomAround(secondTapLatLng, map.getZoom() + 1);
+      if (anchorLatLng) {
+        if (typeof map.setZoomAround === 'function') {
+          map.setZoomAround(anchorLatLng, clamp(map.getZoom() + 1, map.getMinZoom(), map.getMaxZoom()));
+        } else {
+          map.zoomIn(1);
+        }
       } else {
         map.zoomIn(1);
       }
@@ -124,7 +109,17 @@
 
   function reset() {
     holdZoomActive = false;
-    secondTapLatLng = null;
+    movedEnoughForDrag = false;
+
+    startY = 0;
+    startZoom = 0;
+    startCenter = null;
+
+    desiredZoom = 0;
+
+    anchorLatLng = null;
+    anchorContainerPt = null;
+
     rafPending = false;
   }
 
@@ -133,6 +128,54 @@
       rafPending = true;
       requestAnimationFrame(tick);
     }
+  }
+
+  function tick() {
+    rafPending = false;
+    if (!holdZoomActive) return;
+
+    const state = computeZoomState(anchorLatLng, anchorContainerPt, desiredZoom);
+
+    if (canUseInternalZoomAnim) {
+      // Use Leaflet's own zoom animation pipeline (same as pinch)
+      const scale = map.getZoomScale(state.zoom, startZoom);
+      try {
+        // This continuously updates the CSS transform without committing zoom
+        map._animateZoom(state.center, scale, anchorContainerPt);
+      } catch (_) {
+        // Fallback if Leaflet internals differ
+        setZoomAroundNoAnim(anchorLatLng, state.zoom);
+      }
+    } else {
+      // Fallback: immediate zoom + pan to keep anchor; not as smooth as true anim
+      setZoomAroundNoAnim(anchorLatLng, state.zoom);
+    }
+
+    if (holdZoomActive) ensureRAF();
+  }
+
+  // Compute the center needed so the given anchor latlng stays under the same container point at 'zoom'
+  function computeZoomState(anchorLL, anchorPt, zoom) {
+    const size = map.getSize();
+    // World pixel at target zoom for anchor
+    const p1 = map.project(anchorLL, zoom);
+    // Desired center in world pixels: C1 = P1 - (a - size/2)
+    const centerPoint = p1.subtract(anchorPt.subtract(size.divideBy(2)));
+    const centerLatLng = map.unproject(centerPoint, zoom);
+    return { center: centerLatLng, zoom };
+  }
+
+  function setZoomAroundNoAnim(latlng, zoom) {
+    if (!latlng) {
+      map.setZoom(zoom, { animate: false });
+      return;
+    }
+    // Keep the anchor fixed by panning after a non-animated zoom
+    const before = map.latLngToContainerPoint(latlng);
+    map.setZoom(zoom, { animate: false });
+    const after = map.latLngToContainerPoint(latlng);
+    const offset = after.subtract(before);
+    map.panBy(offset, { animate: false });
   }
 
   function clamp(v, min, max) {
