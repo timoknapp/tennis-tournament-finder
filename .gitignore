@@ -1,0 +1,11 @@
+# Cache files
+backend/data/cache.bolt
+backend/data/cache_test.bolt
+
+# Build artifacts
+backend/main
+backend/test-main
+
+# Temporary files
+*.tmp
+*.log
