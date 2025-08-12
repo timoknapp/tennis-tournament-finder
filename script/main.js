@@ -1,11 +1,15 @@
 let map = L.map('map', {
-  zoomSnap: 0.25,
+  zoomSnap: 0,
   zoomDelta: 0.5,
   doubleClickZoom: true,
-  inertia: true
+  inertia: true,
+  zoomAnimation: true
 }).setView([51.133481, 10.018343], 7);
 window.map = map; // expose map for gesture script
-L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map);
+L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+  updateWhenZooming: true,   // fetch tiles during zoom animation
+  keepBuffer: 3              // keep extra tiles around to reduce visible loads
+}).addTo(map);
 let markers = L.markerClusterGroup();
 
 // const urlBackend = "http://localhost:8080"

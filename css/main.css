@@ -11,6 +11,15 @@ body {
     cursor: default;
 }
 
+/* Improve smoothness of Leaflet zoom transforms */
+.leaflet-map-pane,
+.leaflet-tile-container,
+.leaflet-objects-pane,
+.leaflet-overlay-pane,
+.leaflet-zoom-animated {
+  will-change: transform;
+}
+
 .leaflet-popup-content {
     font-size: 14px;
     line-height: 1.4;
