@@ -2,6 +2,9 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
@@ -14,6 +17,16 @@ func main() {
 
 	openstreetmap.InitCache()
 	logger.Info("OpenStreetMap cache initialized")
+
+	// Set up graceful shutdown
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		logger.Info("Shutting down gracefully...")
+		openstreetmap.CloseCache()
+		os.Exit(0)
+	}()
 
 	// Public API
 	http.HandleFunc("/", tournament.GetTournaments)

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/timoknapp/tennis-tournament-finder/pkg/cache"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 )
@@ -16,13 +18,120 @@ var CachedGeocoordinates map[string]models.Geocoordinates
 var LocationCache map[string]models.Geocoordinates
 var OrganizerCache map[string]models.Geocoordinates
 
+var cacheStore cache.Store
+var useMemoryCache bool
+
 func InitCache() {
+	// Initialize environment-based configuration
+	useMemoryCache = os.Getenv("TTF_CACHE_MEMORY") != "false" // default true
+	cachePath := os.Getenv("TTF_CACHE_PATH")
+	if cachePath == "" {
+		cachePath = "./data/cache.bolt" // default path
+	}
+
+	// Initialize BoltDB store
+	var err error
+	cacheStore, err = cache.NewBoltStore(cachePath)
+	if err != nil {
+		logger.Error("Failed to initialize BoltDB cache store: %v", err)
+		// Fallback to memory-only mode
+		useMemoryCache = true
+		cacheStore = nil
+	}
+
+	// Initialize in-memory maps
 	CachedGeocoordinates = make(map[string]models.Geocoordinates)
 	LocationCache = make(map[string]models.Geocoordinates)
 	OrganizerCache = make(map[string]models.Geocoordinates)
+
+	if useMemoryCache && cacheStore != nil {
+		// Preload BoltDB data into memory when memory cache is enabled
+		logger.Info("Loading existing cache data from BoltDB into memory...")
+		err := cacheStore.ForEach(func(key string, value models.Geocoordinates) error {
+			// Determine which cache map to populate based on key prefix
+			if strings.HasPrefix(key, "loc:") {
+				LocationCache[key] = value
+			} else if strings.HasPrefix(key, "org:") {
+				OrganizerCache[key] = value
+			} else {
+				// Tournament-specific cache (no prefix)
+				CachedGeocoordinates[key] = value
+			}
+			return nil
+		})
+		if err != nil {
+			logger.Error("Failed to preload cache data: %v", err)
+		} else {
+			logger.Info("Preloaded %d tournament, %d location, %d organizer entries from BoltDB",
+				len(CachedGeocoordinates), len(LocationCache), len(OrganizerCache))
+		}
+	}
+
+	logger.Info("Cache initialized: memory=%v, persistent=%v", useMemoryCache, cacheStore != nil)
 }
 
-// generateLocationCacheKey creates a standardized cache key for location-based caching
+// CloseCache properly closes the cache resources
+func CloseCache() {
+	if cacheStore != nil {
+		if err := cacheStore.Close(); err != nil {
+			logger.Error("Failed to close cache store: %v", err)
+		}
+	}
+}
+
+// getFromCache retrieves a geocoordinates entry from the appropriate cache
+func getFromCache(key string) (models.Geocoordinates, bool) {
+	if useMemoryCache {
+		// Determine which memory cache to check based on key prefix
+		var memCache map[string]models.Geocoordinates
+		if strings.HasPrefix(key, "loc:") {
+			memCache = LocationCache
+		} else if strings.HasPrefix(key, "org:") {
+			memCache = OrganizerCache
+		} else {
+			memCache = CachedGeocoordinates
+		}
+
+		if cachedGeo, exists := memCache[key]; exists {
+			return cachedGeo, true
+		}
+		return models.Geocoordinates{}, false
+	}
+
+	// Use BoltDB directly when memory cache is disabled
+	if cacheStore != nil {
+		geo, found, err := cacheStore.Get(key)
+		if err != nil {
+			logger.Error("Failed to get key %s from BoltDB: %v", key, err)
+			return models.Geocoordinates{}, false
+		}
+		return geo, found
+	}
+
+	return models.Geocoordinates{}, false
+}
+
+// setInCache stores a geocoordinates entry in the appropriate cache
+func setInCache(key string, value models.Geocoordinates) {
+	// Always persist to BoltDB if available
+	if cacheStore != nil {
+		if err := cacheStore.Set(key, value); err != nil {
+			logger.Error("Failed to persist key %s to BoltDB: %v", key, err)
+		}
+	}
+
+	// Also store in memory if memory cache is enabled
+	if useMemoryCache {
+		// Determine which memory cache to update based on key prefix
+		if strings.HasPrefix(key, "loc:") {
+			LocationCache[key] = value
+		} else if strings.HasPrefix(key, "org:") {
+			OrganizerCache[key] = value
+		} else {
+			CachedGeocoordinates[key] = value
+		}
+	}
+}
 func generateLocationCacheKey(location, state string) string {
 	// Normalize the location string for better cache hits
 	normalized := strings.ToLower(strings.TrimSpace(location))
@@ -40,7 +149,7 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 	// Priority 1: Check location-based cache if we have a specific location
 	if len(tournament.Location) > 0 {
 		locationKey := generateLocationCacheKey(tournament.Location, state)
-		if cachedGeo, exists := LocationCache[locationKey]; exists {
+		if cachedGeo, exists := getFromCache(locationKey); exists {
 			if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
 				logger.Debug("Cache HIT (location): %s for tournament %s", locationKey, tournament.Id)
 				return cachedGeo
@@ -57,7 +166,7 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 	// Priority 2: Check organizer-based cache
 	if len(tournament.Organizer) > 0 {
 		organizerKey := generateOrganizerCacheKey(tournament.Organizer, state)
-		if cachedGeo, exists := OrganizerCache[organizerKey]; exists {
+		if cachedGeo, exists := getFromCache(organizerKey); exists {
 			if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
 				logger.Debug("Cache HIT (organizer): %s for tournament %s", organizerKey, tournament.Id)
 				return cachedGeo
@@ -72,7 +181,7 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 	}
 
 	// Priority 3: Check tournament-specific cache (existing behavior)
-	if cachedGeo, exists := CachedGeocoordinates[tournament.Id]; exists {
+	if cachedGeo, exists := getFromCache(tournament.Id); exists {
 		// If we have successful coordinates, return them
 		if cachedGeo.Lat != "" && cachedGeo.Lon != "" {
 			logger.Debug("Cache HIT (tournament): %s", tournament.Id)
@@ -125,19 +234,19 @@ func shouldRetryGeocodingRequest(cachedGeo models.Geocoordinates) bool {
 
 func saveGeocoordinatesInCache(tournament models.Tournament, state string, geoCoordinates models.Geocoordinates) {
 	// Always save to tournament-specific cache (existing behavior)
-	CachedGeocoordinates[tournament.Id] = geoCoordinates
+	setInCache(tournament.Id, geoCoordinates)
 
 	// Also save to location cache if we have a location
 	if len(tournament.Location) > 0 {
 		locationKey := generateLocationCacheKey(tournament.Location, state)
-		LocationCache[locationKey] = geoCoordinates
+		setInCache(locationKey, geoCoordinates)
 		logger.Debug("Cached geocoordinates for location key: %s", locationKey)
 	}
 
 	// Also save to organizer cache if we have an organizer
 	if len(tournament.Organizer) > 0 {
 		organizerKey := generateOrganizerCacheKey(tournament.Organizer, state)
-		OrganizerCache[organizerKey] = geoCoordinates
+		setInCache(organizerKey, geoCoordinates)
 		logger.Debug("Cached geocoordinates for organizer key: %s", organizerKey)
 	}
 }
@@ -150,26 +259,58 @@ func GetCacheStatistics() map[string]int {
 		"failed":                0,
 		"pending_retry":         0,
 		"permanently_failed":    0,
-		"location_cache_size":   len(LocationCache),
-		"organizer_cache_size":  len(OrganizerCache),
-		"tournament_cache_size": len(CachedGeocoordinates),
+		"location_cache_size":   0,
+		"organizer_cache_size":  0,
+		"tournament_cache_size": 0,
 	}
 
-	// Count tournament cache statistics
-	for _, geo := range CachedGeocoordinates {
-		stats["total_entries"]++
+	if useMemoryCache {
+		// Use memory cache statistics
+		stats["location_cache_size"] = len(LocationCache)
+		stats["organizer_cache_size"] = len(OrganizerCache)
+		stats["tournament_cache_size"] = len(CachedGeocoordinates)
 
-		if geo.IsFailed {
-			stats["failed"]++
+		// Count tournament cache statistics
+		for _, geo := range CachedGeocoordinates {
+			stats["total_entries"]++
 
-			// Check if this failed entry should be retried
-			if shouldRetryGeocodingRequest(geo) {
-				stats["pending_retry"]++
-			} else if geo.FailCount >= 4 {
-				stats["permanently_failed"]++
+			if geo.IsFailed {
+				stats["failed"]++
+
+				// Check if this failed entry should be retried
+				if shouldRetryGeocodingRequest(geo) {
+					stats["pending_retry"]++
+				} else if geo.FailCount >= 4 {
+					stats["permanently_failed"]++
+				}
+			} else if geo.Lat != "" && geo.Lon != "" {
+				stats["successful"]++
 			}
-		} else if geo.Lat != "" && geo.Lon != "" {
-			stats["successful"]++
+		}
+	} else if cacheStore != nil {
+		// Use BoltDB statistics
+		boltStats, err := cacheStore.GetCacheStatistics()
+		if err != nil {
+			logger.Error("Failed to get BoltDB cache statistics: %v", err)
+		} else {
+			for key, value := range boltStats {
+				stats[key] = value
+			}
+		}
+
+		// Count cache types from BoltDB
+		err = cacheStore.ForEach(func(key string, value models.Geocoordinates) error {
+			if strings.HasPrefix(key, "loc:") {
+				stats["location_cache_size"]++
+			} else if strings.HasPrefix(key, "org:") {
+				stats["organizer_cache_size"]++
+			} else {
+				stats["tournament_cache_size"]++
+			}
+			return nil
+		})
+		if err != nil {
+			logger.Error("Failed to count cache types: %v", err)
 		}
 	}
 
@@ -181,10 +322,37 @@ func CleanupOldFailedEntries() int {
 	cleaned := 0
 	cutoffTime := time.Now().Unix() - (30 * 24 * 3600) // 30 days
 
-	for tournamentId, geo := range CachedGeocoordinates {
-		if geo.IsFailed && geo.FailCount >= 4 && geo.LastAttempt < cutoffTime {
-			delete(CachedGeocoordinates, tournamentId)
-			cleaned++
+	if useMemoryCache {
+		// Clean from memory cache
+		for tournamentId, geo := range CachedGeocoordinates {
+			if geo.IsFailed && geo.FailCount >= 4 && geo.LastAttempt < cutoffTime {
+				delete(CachedGeocoordinates, tournamentId)
+				// Also remove from BoltDB if available
+				if cacheStore != nil {
+					cacheStore.Delete(tournamentId)
+				}
+				cleaned++
+			}
+		}
+	} else if cacheStore != nil {
+		// Clean from BoltDB directly
+		var keysToDelete []string
+		err := cacheStore.ForEach(func(key string, geo models.Geocoordinates) error {
+			if geo.IsFailed && geo.FailCount >= 4 && geo.LastAttempt < cutoffTime {
+				keysToDelete = append(keysToDelete, key)
+			}
+			return nil
+		})
+		if err != nil {
+			logger.Error("Failed to iterate cache for cleanup: %v", err)
+		} else {
+			for _, key := range keysToDelete {
+				if err := cacheStore.Delete(key); err != nil {
+					logger.Error("Failed to delete key %s during cleanup: %v", key, err)
+				} else {
+					cleaned++
+				}
+			}
 		}
 	}
 
@@ -458,7 +626,7 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 
 	// Get previous failure count for progressive backoff
 	var previousFailCount int
-	if cachedGeo, exists := CachedGeocoordinates[tournamentId]; exists && cachedGeo.IsFailed {
+	if cachedGeo, exists := getFromCache(tournamentId); exists && cachedGeo.IsFailed {
 		previousFailCount = cachedGeo.FailCount
 	}
 
@@ -511,5 +679,5 @@ func saveFailedGeocodingAttempt(tournamentId string, previousFailCount int) {
 		FailCount:   previousFailCount + 1,
 		IsFailed:    true,
 	}
-	CachedGeocoordinates[tournamentId] = failedEntry
+	setInCache(tournamentId, failedEntry)
 }
