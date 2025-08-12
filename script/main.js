@@ -1,4 +1,10 @@
-let map = L.map('map').setView([51.133481, 10.018343], 7);
+let map = L.map('map', {
+  zoomSnap: 0.25,
+  zoomDelta: 0.5,
+  doubleClickZoom: true,
+  inertia: true
+}).setView([51.133481, 10.018343], 7);
+window.map = map; // expose map for gesture script
 L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map);
 let markers = L.markerClusterGroup();
 
