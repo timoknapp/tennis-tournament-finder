@@ -19,6 +19,9 @@ const (
 	EnvPath       = "/admin/env"
 )
 
+// Component reload callback
+var reloadCallback func() error
+
 // Internal state, protected by mu
 var (
 	mu sync.RWMutex
@@ -109,6 +112,11 @@ func Init() {
 			updateActiveUsers(now)
 		}
 	}()
+}
+
+// SetReloadCallback sets the function to call when configuration reload is requested
+func SetReloadCallback(callback func() error) {
+	reloadCallback = callback
 }
 
 // Instrument wraps the handler to collect metrics.
@@ -409,11 +417,22 @@ func handleSetEnv(w http.ResponseWriter, r *http.Request) {
 		updated[key] = value
 	}
 	
+	// Trigger component reload if any variables were successfully updated
+	reloadMessage := "Environment variables updated. Note: Some changes may require component restart to take effect."
+	if len(updated) > 0 && reloadCallback != nil {
+		if err := reloadCallback(); err != nil {
+			errors["reload"] = "Component reload failed: " + err.Error()
+			reloadMessage = "Environment variables updated, but component reload failed. Manual restart may be required."
+		} else {
+			reloadMessage = "Environment variables updated and components reloaded successfully."
+		}
+	}
+	
 	response := map[string]interface{}{
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 		"updated":   updated,
 		"errors":    errors,
-		"message":   "Environment variables updated. Note: Some changes may require component restart to take effect.",
+		"message":   reloadMessage,
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
