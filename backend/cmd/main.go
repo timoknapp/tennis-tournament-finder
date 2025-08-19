@@ -38,6 +38,7 @@ func main() {
 		diagMux := http.NewServeMux()
 		diagMux.Handle(metrics.StatsPath, http.HandlerFunc(metrics.StatsHandler))
 		diagMux.Handle(metrics.DebugVarsPath, expvar.Handler())
+		diagMux.Handle(metrics.EnvPath, http.HandlerFunc(metrics.EnvHandler))
 		addr := "127.0.0.1:9090"
 		logger.Info("Starting diagnostics server on %s (localhost-only)", addr)
 		if err := http.ListenAndServe(addr, diagMux); err != nil {
