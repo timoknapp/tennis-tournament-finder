@@ -55,6 +55,52 @@ func (s *Scheduler) Stop() {
 	s.c.Stop()
 }
 
+// Reload updates the scheduler configuration from environment variables and restarts if necessary
+func (s *Scheduler) Reload() error {
+	newConfig := FromEnv()
+	
+	// If configuration hasn't changed, no need to restart
+	if s.config.CronSpec == newConfig.CronSpec &&
+		s.config.CompType == newConfig.CompType &&
+		s.config.Federations == newConfig.Federations &&
+		s.config.Enabled == newConfig.Enabled {
+		logger.Info("Scheduler configuration unchanged, no restart needed")
+		return nil
+	}
+	
+	// Stop current scheduler
+	s.c.Stop()
+	logger.Info("Stopped scheduler for configuration reload")
+	
+	// Update configuration
+	s.config = newConfig
+	
+	// Create new cron scheduler with updated config
+	s.c = cron.New()
+	if newConfig.Enabled {
+		_, err := s.c.AddFunc(newConfig.CronSpec, func() {
+			logger.Info("Scheduler tick: running warmup job")
+			total := tournament.Warmup("", "", newConfig.CompType, newConfig.Federations)
+			logger.Info("Scheduler warmup done, tournaments fetched: %d", total)
+		})
+		if err != nil {
+			return err
+		}
+		s.c.Start()
+		logger.Info("Scheduler restarted with new configuration (cron=%s, compType=%s, federations=%s)",
+			newConfig.CronSpec, newConfig.CompType, newConfig.Federations)
+	} else {
+		logger.Info("Scheduler disabled via configuration reload")
+	}
+	
+	return nil
+}
+
+// GetConfig returns the current scheduler configuration
+func (s *Scheduler) GetConfig() Config {
+	return s.config
+}
+
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if v != "" {
