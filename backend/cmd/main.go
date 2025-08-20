@@ -1,12 +1,14 @@
 package main
 
 import (
+	"expvar"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/metrics"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/scheduler"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/tournament"
@@ -28,8 +30,23 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// Public API
-	http.HandleFunc("/", tournament.GetTournaments)
+	// Lightweight metrics (no Prometheus required)
+	metrics.Init()
+
+	// Start a localhost-only diagnostics server for /stats and /debug/vars
+	go func() {
+		diagMux := http.NewServeMux()
+		diagMux.Handle(metrics.StatsPath, http.HandlerFunc(metrics.StatsHandler))
+		diagMux.Handle(metrics.DebugVarsPath, expvar.Handler())
+		addr := "127.0.0.1:9090"
+		logger.Info("Starting diagnostics server on %s (localhost-only)", addr)
+		if err := http.ListenAndServe(addr, diagMux); err != nil {
+			logger.Error("Diagnostics server error: %v", err)
+		}
+	}()
+
+	// Public API with instrumentation (served on :8080)
+	http.Handle("/", metrics.Instrument(http.HandlerFunc(tournament.GetTournaments)))
 
 	// In-process scheduler (fully optional; enable with env var)
 	cfg := scheduler.FromEnv()
