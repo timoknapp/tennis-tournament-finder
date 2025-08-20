@@ -5,6 +5,7 @@ import (
 	"expvar"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,7 +16,11 @@ import (
 const (
 	StatsPath     = "/stats"
 	DebugVarsPath = "/debug/vars"
+	EnvPath       = "/admin/env"
 )
+
+// Component reload callback
+var reloadCallback func() error
 
 // Internal state, protected by mu
 var (
@@ -107,6 +112,11 @@ func Init() {
 			updateActiveUsers(now)
 		}
 	}()
+}
+
+// SetReloadCallback sets the function to call when configuration reload is requested
+func SetReloadCallback(callback func() error) {
+	reloadCallback = callback
 }
 
 // Instrument wraps the handler to collect metrics.
@@ -336,4 +346,115 @@ func updateActiveUsers(now time.Time) {
 	}
 	mu.Unlock()
 	evActiveUsers5Min.Set(int64(count))
+}
+
+// EnvHandler provides GET/POST access to environment variables management
+func EnvHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		handleGetEnv(w, r)
+	case http.MethodPost, http.MethodPut:
+		handleSetEnv(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleGetEnv returns current TTF_* environment variables
+func handleGetEnv(w http.ResponseWriter, r *http.Request) {
+	envVars := make(map[string]string)
+	
+	// Get all environment variables and filter TTF_* ones
+	for _, env := range os.Environ() {
+		pair := strings.SplitN(env, "=", 2)
+		if len(pair) == 2 && strings.HasPrefix(pair[0], "TTF_") {
+			envVars[pair[0]] = pair[1]
+		}
+	}
+	
+	response := map[string]interface{}{
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"env_vars":  envVars,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+// handleSetEnv updates environment variables from JSON request
+func handleSetEnv(w http.ResponseWriter, r *http.Request) {
+	var request map[string]string
+	
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+		return
+	}
+	
+	updated := make(map[string]string)
+	errors := make(map[string]string)
+	
+	for key, value := range request {
+		// Security: only allow TTF_* prefixed environment variables
+		if !strings.HasPrefix(key, "TTF_") {
+			errors[key] = "Only TTF_* prefixed environment variables are allowed"
+			continue
+		}
+		
+		// Validate key format (alphanumeric and underscore only)
+		if !isValidEnvVarName(key) {
+			errors[key] = "Invalid environment variable name format"
+			continue
+		}
+		
+		// Set the environment variable
+		if err := os.Setenv(key, value); err != nil {
+			errors[key] = "Failed to set environment variable: " + err.Error()
+			continue
+		}
+		
+		updated[key] = value
+	}
+	
+	// Trigger component reload if any variables were successfully updated
+	reloadMessage := "Environment variables updated. Note: Some changes may require component restart to take effect."
+	if len(updated) > 0 && reloadCallback != nil {
+		if err := reloadCallback(); err != nil {
+			errors["reload"] = "Component reload failed: " + err.Error()
+			reloadMessage = "Environment variables updated, but component reload failed. Manual restart may be required."
+		} else {
+			reloadMessage = "Environment variables updated and components reloaded successfully."
+		}
+	}
+	
+	response := map[string]interface{}{
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"updated":   updated,
+		"errors":    errors,
+		"message":   reloadMessage,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	statusCode := http.StatusOK
+	if len(errors) > 0 && len(updated) == 0 {
+		statusCode = http.StatusBadRequest
+	}
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+// isValidEnvVarName checks if the environment variable name is valid
+func isValidEnvVarName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for _, char := range name {
+		if !((char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_') {
+			return false
+		}
+	}
+	return true
 }
