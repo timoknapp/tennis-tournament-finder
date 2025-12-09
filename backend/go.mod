@@ -5,8 +5,8 @@ go 1.23.0
 toolchain go1.24.1
 
 require (
-	github.com/PuerkitoBio/goquery v1.10.3
-	go.etcd.io/bbolt v1.4.2
+	github.com/PuerkitoBio/goquery v1.11.0
+	go.etcd.io/bbolt v1.4.3
 )
 
 require golang.org/x/sys v0.32.0 // indirect
