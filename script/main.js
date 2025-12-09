@@ -28,12 +28,13 @@ const loadingDiv = document.getElementById('loading');
 
 // Initialize mobile filter visibility
 document.addEventListener('DOMContentLoaded', function() {
-    initializeMobileFilters();
+    // Force filters visible on first load so users immediately see the options
+    initializeMobileFilters(true);
     setupFederationLimits();
     registerMapFilterAutoClose();
 });
 
-function initializeMobileFilters() {
+function initializeMobileFilters(forceShow = false) {
     const filterContainer = document.getElementById('filterContainer');
     const toggleBtn = document.getElementById('filterToggle');
 
@@ -41,12 +42,18 @@ function initializeMobileFilters() {
         return;
     }
 
+    if (forceShow) {
+        filterContainer.style.display = 'block';
+        toggleBtn.innerHTML = 'Filter ▲';
+        return;
+    }
+
     if (shouldAutoCloseFilters()) {
         filterContainer.style.display = 'none';
-        toggleBtn.innerHTML = 'Filter ⚙️';
+        toggleBtn.innerHTML = 'Filter ▼';
     } else {
         filterContainer.style.display = 'block';
-        toggleBtn.innerHTML = 'Filter ✕';
+        toggleBtn.innerHTML = 'Filter ▲';
     }
 }
 
@@ -80,7 +87,7 @@ function closeFiltersForMapInteraction() {
     }
 
     filterContainer.style.display = 'none';
-    toggleBtn.innerHTML = 'Filter ⚙️';
+    toggleBtn.innerHTML = 'Filter ▼';
 }
 
 function registerMapFilterAutoClose() {
@@ -294,10 +301,10 @@ function toggleFilters() {
     
     if (filterContainer.style.display === 'none') {
         filterContainer.style.display = 'block';
-        toggleBtn.innerHTML = 'Filter ✕';
+        toggleBtn.innerHTML = 'Filter ▲';
     } else {
         filterContainer.style.display = 'none';
-        toggleBtn.innerHTML = 'Filter ⚙️';
+        toggleBtn.innerHTML = 'Filter ▼';
     }
 }
 
