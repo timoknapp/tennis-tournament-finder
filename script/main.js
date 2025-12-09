@@ -10,7 +10,7 @@ L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
   updateWhenZooming: true,   // fetch tiles during zoom animation
   keepBuffer: 3              // keep extra tiles around to reduce visible loads
 }).addTo(map);
-let markers = L.markerClusterGroup();
+let markers = createMarkerClusterGroup();
 
 // const urlBackend = "http://localhost:8080"
 const urlBackend = "https://timoknapp.com/ttf"
@@ -19,6 +19,7 @@ const urlGoogleQuery = "https://maps.google.com/maps?q="
 const initDateFrom = new Date(Date.now());
 const initDateTo = new Date(Date.now() + (7 * 86400000));
 const MAX_SELECTED_FEDERATIONS = 3;
+const FILTER_AUTO_CLOSE_BREAKPOINT = 1024; // px
 
 document.getElementById('dateFrom').value = formatDateToInput(initDateFrom);
 document.getElementById('dateTo').value = formatDateToInput(initDateTo);
@@ -29,30 +30,69 @@ const loadingDiv = document.getElementById('loading');
 document.addEventListener('DOMContentLoaded', function() {
     initializeMobileFilters();
     setupFederationLimits();
+    registerMapFilterAutoClose();
 });
 
 function initializeMobileFilters() {
     const filterContainer = document.getElementById('filterContainer');
     const toggleBtn = document.getElementById('filterToggle');
-    
-    if (filterContainer && toggleBtn) {
-        // Check if we're in portrait mode (mobile)
-        if (window.matchMedia("(orientation: portrait)").matches) {
-            // Show filters by default on mobile
-            filterContainer.style.display = 'block';
-            toggleBtn.innerHTML = 'Filter ✕';
-        } else {
-            // Always show filters on desktop/landscape
-            filterContainer.style.display = 'block';
-            toggleBtn.innerHTML = 'Filter ✕';
-        }
+
+    if (!filterContainer || !toggleBtn) {
+        return;
+    }
+
+    if (shouldAutoCloseFilters()) {
+        filterContainer.style.display = 'none';
+        toggleBtn.innerHTML = 'Filter ⚙️';
+    } else {
+        filterContainer.style.display = 'block';
+        toggleBtn.innerHTML = 'Filter ✕';
     }
 }
 
-// Listen for orientation changes
+// Listen for orientation or viewport changes that might affect the breakpoint
 window.addEventListener('orientationchange', function() {
     setTimeout(initializeMobileFilters, 100); // Small delay to ensure orientation change is complete
 });
+window.addEventListener('resize', function() {
+    initializeMobileFilters();
+});
+
+function shouldAutoCloseFilters() {
+    return window.matchMedia(`(max-width: ${FILTER_AUTO_CLOSE_BREAKPOINT}px)`).matches;
+}
+
+function closeFiltersForMapInteraction() {
+    const filterContainer = document.getElementById('filterContainer');
+    const toggleBtn = document.getElementById('filterToggle');
+
+    if (!filterContainer || !toggleBtn) {
+        return;
+    }
+
+    if (!shouldAutoCloseFilters()) {
+        return;
+    }
+
+    const isHidden = window.getComputedStyle(filterContainer).display === 'none';
+    if (isHidden) {
+        return;
+    }
+
+    filterContainer.style.display = 'none';
+    toggleBtn.innerHTML = 'Filter ⚙️';
+}
+
+function registerMapFilterAutoClose() {
+    if (!window.map || typeof window.map.on !== 'function') {
+        return;
+    }
+
+    const interactionEvents = ['click', 'dragstart', 'zoomstart'];
+    interactionEvents.forEach(eventName => {
+        window.map.on(eventName, closeFiltersForMapInteraction);
+    });
+}
 
 // Remove automatic initial request - user must manually submit
 // getTournamentsByDate(initDateFrom, initDateTo, "", getSelectedFederations());
@@ -64,7 +104,7 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
         getTournaments(dateFrom, dateTo, compType, federations)
         .then(tournaments => {
             map.removeLayer(markers);
-            markers = L.markerClusterGroup();
+            markers = createMarkerClusterGroup();
             for (const tournament of tournaments) {
                 // Process competition entries for display
                 let competitionDetails = "";
@@ -259,4 +299,21 @@ function toggleFilters() {
         filterContainer.style.display = 'none';
         toggleBtn.innerHTML = 'Filter ⚙️';
     }
+}
+
+function createMarkerClusterGroup() {
+    const group = L.markerClusterGroup();
+    attachFilterAutoCloseToMarkers(group);
+    return group;
+}
+
+function attachFilterAutoCloseToMarkers(group) {
+    if (!group || typeof group.on !== 'function') {
+        return;
+    }
+
+    const markerEvents = ['click', 'popupopen', 'clusterclick'];
+    markerEvents.forEach(eventName => {
+        group.on(eventName, closeFiltersForMapInteraction);
+    });
 }
