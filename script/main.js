@@ -17,7 +17,8 @@ const urlBackend = "https://timoknapp.com/ttf"
 const urlGoogleQuery = "https://maps.google.com/maps?q="
 
 const initDateFrom = new Date(Date.now());
-const initDateTo = new Date(Date.now()+(7*86400000));
+const initDateTo = new Date(Date.now() + (7 * 86400000));
+const MAX_SELECTED_FEDERATIONS = 3;
 
 document.getElementById('dateFrom').value = formatDateToInput(initDateFrom);
 document.getElementById('dateTo').value = formatDateToInput(initDateTo);
@@ -196,9 +197,9 @@ function getSelectedFederations() {
 
 function selectAllFederations() {
     const checkboxes = document.querySelectorAll('input[name="federations"]');
-    // Only select the first 2 federations
+    // Only select up to the configured maximum federations
     checkboxes.forEach((checkbox, index) => {
-        checkbox.checked = index < 2;
+        checkbox.checked = index < MAX_SELECTED_FEDERATIONS;
     });
     updateFederationSelectionState();
 }
@@ -211,24 +212,24 @@ function deselectAllFederations() {
 
 function setupFederationLimits() {
     const checkboxes = document.querySelectorAll('input[name="federations"]');
-    
+
     checkboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
+        checkbox.addEventListener('change', function () {
             const checkedBoxes = document.querySelectorAll('input[name="federations"]:checked');
-            
-            if (checkedBoxes.length > 2) {
-                // If more than 2 are selected, uncheck the current one
+
+            if (checkedBoxes.length > MAX_SELECTED_FEDERATIONS) {
+                // If more than the allowed number are selected, uncheck the current one
                 this.checked = false;
-                alert('Sie können maximal 2 Verbände gleichzeitig auswählen, um die Serverbelastung zu reduzieren.');
+                alert(`Sie können maximal ${MAX_SELECTED_FEDERATIONS} Verbände gleichzeitig auswählen, um die Serverbelastung zu reduzieren.`);
             }
-            
+
             updateFederationSelectionState();
         });
     });
-    
-    // Initialize with first 2 federations selected
+
+    // Initialize with the first N federations selected
     checkboxes.forEach((checkbox, index) => {
-        checkbox.checked = index < 2;
+        checkbox.checked = index < MAX_SELECTED_FEDERATIONS;
     });
     updateFederationSelectionState();
 }
@@ -237,9 +238,9 @@ function updateFederationSelectionState() {
     const checkboxes = document.querySelectorAll('input[name="federations"]');
     const checkedBoxes = document.querySelectorAll('input[name="federations"]:checked');
     
-    // Disable unchecked boxes if 2 are already selected
+    // Disable unchecked boxes if limit is reached
     checkboxes.forEach(checkbox => {
-        if (!checkbox.checked && checkedBoxes.length >= 2) {
+        if (!checkbox.checked && checkedBoxes.length >= MAX_SELECTED_FEDERATIONS) {
             checkbox.disabled = true;
         } else {
             checkbox.disabled = false;
