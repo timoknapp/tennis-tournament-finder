@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
@@ -16,7 +17,8 @@ import (
 
 // Global variables for components that can be reloaded
 var (
-	globalScheduler *scheduler.Scheduler
+	globalScheduler   *scheduler.Scheduler
+	globalSchedulerMu sync.Mutex
 )
 
 func main() {
@@ -63,7 +65,9 @@ func main() {
 			logger.Error("Failed to start scheduler: %v", err)
 		} else {
 			s.Start()
+			globalSchedulerMu.Lock()
 			globalScheduler = s
+			globalSchedulerMu.Unlock()
 			logger.Info("Scheduler enabled")
 		}
 	} else {
@@ -88,6 +92,9 @@ func ReloadComponents() error {
 	}
 	
 	// Reload scheduler configuration
+	globalSchedulerMu.Lock()
+	defer globalSchedulerMu.Unlock()
+	
 	cfg := scheduler.FromEnv()
 	if cfg.Enabled {
 		if globalScheduler == nil {

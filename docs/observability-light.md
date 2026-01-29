@@ -15,15 +15,17 @@ What's included:
 - Total requests, total errors, average latency
 - Requests per minute over the last 10 minutes
 - Requests by method and status, e.g. "GET 200": 123
-- Latency buckets by method (ms): 10,25,50,100,250,500,1000,2500,5000,+Inf
+- Latency buckets by method (ms): 10,25,50,100,250,500,1000,2500,5000,+Inf (available in `/debug/vars` endpoint only)
 - Active users over the last 5 minutes (based on `X-User-ID` header or client IP fallback)
+
+**Note:** The `/stats` endpoint provides a compact JSON summary with core metrics (total requests, errors, avg latency, active users, requests by method/status). For detailed latency bucket distributions by HTTP method, use the `/debug/vars` endpoint which exposes the `ttf_request_duration_ms_buckets` metric.
 
 Examples:
 - Quick check:
   ```
   curl -s http://127.0.0.1:9090/stats | jq
   ```
-- Machine-readable full vars:
+- Machine-readable full vars with latency buckets:
   ```
   curl -s http://127.0.0.1:9090/debug/vars | jq '. | with_entries(select(.key|startswith("ttf_")))'
   ```

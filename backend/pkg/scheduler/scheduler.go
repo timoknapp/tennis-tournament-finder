@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"os"
+	"sync"
 
 	"github.com/robfig/cron/v3"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
@@ -16,6 +17,7 @@ type Config struct {
 }
 
 type Scheduler struct {
+	mu     sync.RWMutex
 	c      *cron.Cron
 	config Config
 }
@@ -57,6 +59,9 @@ func (s *Scheduler) Stop() {
 
 // Reload updates the scheduler configuration from environment variables and restarts if necessary
 func (s *Scheduler) Reload() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
 	newConfig := FromEnv()
 	
 	// If configuration hasn't changed, no need to restart
@@ -68,36 +73,48 @@ func (s *Scheduler) Reload() error {
 		return nil
 	}
 	
+	// Keep backup of old cron and config in case reload fails
+	oldCron := s.c
+	oldConfig := s.config
+	
 	// Stop current scheduler
-	s.c.Stop()
+	oldCron.Stop()
 	logger.Info("Stopped scheduler for configuration reload")
 	
-	// Update configuration
-	s.config = newConfig
-	
 	// Create new cron scheduler with updated config
-	s.c = cron.New()
+	newCron := cron.New()
 	if newConfig.Enabled {
-		_, err := s.c.AddFunc(newConfig.CronSpec, func() {
+		_, err := newCron.AddFunc(newConfig.CronSpec, func() {
 			logger.Info("Scheduler tick: running warmup job")
 			total := tournament.Warmup("", "", newConfig.CompType, newConfig.Federations)
 			logger.Info("Scheduler warmup done, tournaments fetched: %d", total)
 		})
 		if err != nil {
+			// Restore old scheduler on error
+			s.c = oldCron
+			s.config = oldConfig
+			oldCron.Start()
+			logger.Error("Failed to reload scheduler, restored previous configuration: %v", err)
 			return err
 		}
-		s.c.Start()
+		newCron.Start()
 		logger.Info("Scheduler restarted with new configuration (cron=%s, compType=%s, federations=%s)",
 			newConfig.CronSpec, newConfig.CompType, newConfig.Federations)
 	} else {
 		logger.Info("Scheduler disabled via configuration reload")
 	}
 	
+	// Update to new configuration
+	s.c = newCron
+	s.config = newConfig
+	
 	return nil
 }
 
 // GetConfig returns the current scheduler configuration
 func (s *Scheduler) GetConfig() Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.config
 }
 
