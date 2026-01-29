@@ -30,12 +30,12 @@ var (
 // allowedMethods is a whitelist of standard HTTP methods to prevent unbounded map growth
 var allowedMethods = map[string]bool{
 	"GET":     true,
-    "POST":    true,
-    "PUT":     true,
-    "DELETE":  true,
-    "PATCH":   true,
-    "HEAD":    true,
-    "OPTIONS": true,
+	"POST":    true,
+	"PUT":     true,
+	"DELETE":  true,
+	"PATCH":   true,
+	"HEAD":    true,
+	"OPTIONS": true,
 }
 
 // Init publishes expvar variables and starts any background maintenance if needed.
@@ -256,8 +256,8 @@ func (s *metricsState) record(r *http.Request, statusCode int, d time.Duration) 
 
 	// Totals
 	s.totalReq++
-	// Only count server errors (5xx) as errors, not client errors (4xx)
-	if statusCode >= 500 {
+	// Count both client errors (4xx) and server errors (5xx) as errors
+	if statusCode >= 400 {
 		s.totalErr++
 	}
 	s.totalLatency += d
@@ -296,9 +296,9 @@ func (s *metricsState) record(r *http.Request, statusCode int, d time.Duration) 
 					s.perMinute[i] = 0
 				}
 			}
-			}
-		s.lastMinute = currMinute
 		}
+		s.lastMinute = currMinute
+	}
 	s.perMinute[0]++
 
 	// Active users (5m window)
