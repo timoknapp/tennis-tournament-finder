@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 )
 
 const (
@@ -20,9 +22,21 @@ const (
 )
 
 var (
-	reloadCallback func() error
-	st             = newState()
+	reloadCallback   func() error
+	reloadCallbackMu sync.RWMutex
+	st               = newState()
 )
+
+// allowedMethods is a whitelist of standard HTTP methods to prevent unbounded map growth
+var allowedMethods = map[string]bool{
+	"GET":     true,
+    "POST":    true,
+    "PUT":     true,
+    "DELETE":  true,
+    "PATCH":   true,
+    "HEAD":    true,
+    "OPTIONS": true,
+}
 
 // Init publishes expvar variables and starts any background maintenance if needed.
 // Call this once at process startup.
@@ -97,9 +111,19 @@ func Init() {
 	}))
 }
 
-// SetReloadCallback sets the function to call when configuration reload is requested
+// SetReloadCallback sets the function to call when configuration reload is requested.
+// This function is thread-safe and can be called from any goroutine.
 func SetReloadCallback(callback func() error) {
+	reloadCallbackMu.Lock()
+	defer reloadCallbackMu.Unlock()
 	reloadCallback = callback
+}
+
+// getReloadCallback safely retrieves the reload callback function.
+func getReloadCallback() func() error {
+	reloadCallbackMu.RLock()
+	defer reloadCallbackMu.RUnlock()
+	return reloadCallback
 }
 
 // Instrument wraps an http.Handler to record request count, status codes, latency
@@ -155,11 +179,13 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s)
+	if err := json.NewEncoder(w).Encode(s); err != nil {
+		// Headers already sent, can't change status code - just log the error
+		logger.Error("Failed to encode stats response: %v", err)
+	}
 }
 
 // ===== Internals =====
-
 type stats struct {
 	StartedAt                 string                      `json:"started_at"`
 	UptimeSeconds             int64                       `json:"uptime_seconds"`
@@ -170,7 +196,6 @@ type stats struct {
 	ActiveUsers5m             int64                       `json:"active_users_5m"`
 	RequestsByMethodAndStatus map[string]map[string]int64 `json:"requests_by_method_status"`
 }
-
 type metricsState struct {
 	mu sync.Mutex
 
@@ -201,7 +226,6 @@ func newState() *metricsState {
 		active:          make(map[string]time.Time),
 	}
 }
-
 type statusWriter struct {
 	http.ResponseWriter
 	status int
@@ -212,19 +236,28 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// normalizeMethod returns a whitelisted HTTP method or "OTHER" to prevent unbounded map growth
+func normalizeMethod(method string) string {
+	if method == "" {
+		return "UNKNOWN"
+	}
+	if allowedMethods[method] {
+		return method
+	}
+	return "OTHER"
+}
+
 func (s *metricsState) record(r *http.Request, statusCode int, d time.Duration) {
 	now := time.Now()
-	method := r.Method
-	if method == "" {
-		method = "UNKNOWN"
-	}
+	method := normalizeMethod(r.Method)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Totals
 	s.totalReq++
-	if statusCode >= 400 {
+	// Only count server errors (5xx) as errors, not client errors (4xx)
+	if statusCode >= 500 {
 		s.totalErr++
 	}
 	s.totalLatency += d
@@ -263,12 +296,9 @@ func (s *metricsState) record(r *http.Request, statusCode int, d time.Duration) 
 					s.perMinute[i] = 0
 				}
 			}
-			for i := 0; i < delta; i++ {
-				s.perMinute[i] = 0
 			}
-		}
 		s.lastMinute = currMinute
-	}
+		}
 	s.perMinute[0]++
 
 	// Active users (5m window)
@@ -358,7 +388,8 @@ func handleGetEnv(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		// Headers already sent, can't change status code - just log the error
+		logger.Error("Failed to encode env response: %v", err)
 	}
 }
 
@@ -381,7 +412,7 @@ func handleSetEnv(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Validate key format (alphanumeric and underscore only)
+		// Validate key format (alphanumeric and underscore only, first char must be letter or underscore)
 		if !isValidEnvVarName(key) {
 			errors[key] = "Invalid environment variable name format"
 			continue
@@ -398,12 +429,15 @@ func handleSetEnv(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger component reload if any variables were successfully updated
 	reloadMessage := "Environment variables updated. Note: Some changes may require component restart to take effect."
-	if len(updated) > 0 && reloadCallback != nil {
-		if err := reloadCallback(); err != nil {
-			errors["reload"] = "Component reload failed: " + err.Error()
-			reloadMessage = "Environment variables updated, but component reload failed. Manual restart may be required."
-		} else {
-			reloadMessage = "Environment variables updated and components reloaded successfully."
+	if len(updated) > 0 {
+		callback := getReloadCallback()
+		if callback != nil {
+			if err := callback(); err != nil {
+				errors["reload"] = "Component reload failed: " + err.Error()
+				reloadMessage = "Environment variables updated, but component reload failed. Manual restart may be required."
+			} else {
+				reloadMessage = "Environment variables updated and components reloaded successfully."
+			}
 		}
 	}
 
@@ -421,18 +455,28 @@ func handleSetEnv(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		// Headers already sent, can't change status code - just log the error
+		logger.Error("Failed to encode setenv response: %v", err)
 	}
 }
 
-// isValidEnvVarName checks if the environment variable name is valid
+// isValidEnvVarName checks if the environment variable name is valid.
+// Names must start with a letter or underscore, followed by letters, digits, or underscores.
 func isValidEnvVarName(name string) bool {
 	if len(name) == 0 {
 		return false
 	}
-	for _, char := range name {
-		if !((char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_') {
-			return false
+	for i, char := range name {
+		if i == 0 {
+			// First character must be A-Z or underscore
+			if !((char >= 'A' && char <= 'Z') || char == '_') {
+				return false
+			}
+		} else {
+			// Subsequent characters may be A-Z, 0-9, or underscore
+			if !((char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_') {
+				return false
+			}
 		}
 	}
 	return true
