@@ -93,11 +93,12 @@ func ReloadComponents() error {
 	
 	// Reload scheduler configuration
 	globalSchedulerMu.Lock()
-	defer globalSchedulerMu.Unlock()
-	
 	cfg := scheduler.FromEnv()
+	currentScheduler := globalScheduler
+	globalSchedulerMu.Unlock()
+	
 	if cfg.Enabled {
-		if globalScheduler == nil {
+		if currentScheduler == nil {
 			// Scheduler was disabled, now enable it
 			s, err := scheduler.New(cfg)
 			if err != nil {
@@ -105,20 +106,24 @@ func ReloadComponents() error {
 				return err
 			}
 			s.Start()
+			globalSchedulerMu.Lock()
 			globalScheduler = s
+			globalSchedulerMu.Unlock()
 			logger.Info("Scheduler enabled during configuration reload")
 		} else {
 			// Scheduler exists, reload its configuration
-			if err := globalScheduler.Reload(); err != nil {
+			if err := currentScheduler.Reload(); err != nil {
 				logger.Error("Failed to reload scheduler configuration: %v", err)
 				return err
 			}
 		}
 	} else {
 		// Scheduler should be disabled
-		if globalScheduler != nil {
-			globalScheduler.Stop()
+		if currentScheduler != nil {
+			currentScheduler.Stop()
+			globalSchedulerMu.Lock()
 			globalScheduler = nil
+			globalSchedulerMu.Unlock()
 			logger.Info("Scheduler disabled during configuration reload")
 		}
 	}

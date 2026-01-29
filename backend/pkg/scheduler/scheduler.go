@@ -48,12 +48,16 @@ func New(cfg Config) (*Scheduler, error) {
 }
 
 func (s *Scheduler) Start() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	logger.Info("Starting scheduler (cron=%s, compType=%s, federations=%s)",
 		s.config.CronSpec, s.config.CompType, s.config.Federations)
 	s.c.Start()
 }
 
 func (s *Scheduler) Stop() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	s.c.Stop()
 }
 
@@ -81,9 +85,9 @@ func (s *Scheduler) Reload() error {
 	oldCron.Stop()
 	logger.Info("Stopped scheduler for configuration reload")
 	
-	// Create new cron scheduler with updated config
-	newCron := cron.New()
+	// Create new cron scheduler with updated config only if enabled
 	if newConfig.Enabled {
+		newCron := cron.New()
 		_, err := newCron.AddFunc(newConfig.CronSpec, func() {
 			logger.Info("Scheduler tick: running warmup job")
 			total := tournament.Warmup("", "", newConfig.CompType, newConfig.Federations)
@@ -100,13 +104,15 @@ func (s *Scheduler) Reload() error {
 		newCron.Start()
 		logger.Info("Scheduler restarted with new configuration (cron=%s, compType=%s, federations=%s)",
 			newConfig.CronSpec, newConfig.CompType, newConfig.Federations)
+		
+		// Update to new configuration
+		s.c = newCron
+		s.config = newConfig
 	} else {
+		// Keep old cron (already stopped) but update config to reflect disabled state
+		s.config = newConfig
 		logger.Info("Scheduler disabled via configuration reload")
 	}
-	
-	// Update to new configuration
-	s.c = newCron
-	s.config = newConfig
 	
 	return nil
 }
