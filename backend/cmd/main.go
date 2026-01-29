@@ -51,7 +51,8 @@ func main() {
 		addr := "127.0.0.1:9090"
 		logger.Info("Starting diagnostics server on http://%s%s and http://%s%s", addr, metrics.StatsPath, addr, metrics.DebugVarsPath)
 		if err := http.ListenAndServe(addr, diagMux); err != nil {
-			logger.Error("Diagnostics server error: %v", err)
+			logger.Error("Diagnostics server failed to start on %s: %v", addr, err)
+			logger.Error("Diagnostics endpoints will NOT be available at http://%s%s, http://%s%s, or http://%s%s for this process lifetime", addr, metrics.StatsPath, addr, metrics.DebugVarsPath, addr, metrics.EnvPath)
 		}
 	}()
 
