@@ -19,6 +19,7 @@ import (
 var (
 	globalScheduler   *scheduler.Scheduler
 	globalSchedulerMu sync.Mutex
+	reloadMu          sync.Mutex
 )
 
 func main() {
@@ -82,6 +83,10 @@ func main() {
 
 // ReloadComponents reloads application components after environment variable changes
 func ReloadComponents() error {
+	// Serialize reload operations to prevent concurrent execution
+	reloadMu.Lock()
+	defer reloadMu.Unlock()
+	
 	logger.Info("Reloading application components...")
 	
 	// Reload log level

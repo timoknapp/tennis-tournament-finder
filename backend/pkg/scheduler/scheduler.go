@@ -109,7 +109,8 @@ func (s *Scheduler) Reload() error {
 		s.c = newCron
 		s.config = newConfig
 	} else {
-		// Keep old cron (already stopped) but update config to reflect disabled state
+		// Create a new stopped cron instance to keep state clean
+		s.c = cron.New()
 		s.config = newConfig
 		logger.Info("Scheduler disabled via configuration reload")
 	}
