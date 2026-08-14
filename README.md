@@ -33,6 +33,7 @@
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
   * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Helps you finding the tournaments around you
+* Map and list view, with the list sortable by date, title or organizer
 * Lets you filter tournaments by date, competition type, and federation
 * Short link to the official Tournament at [tennis.de](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
@@ -155,6 +156,20 @@ tournaments match" apart from "this federation is down":
 `status` is one of `ok`, `cached`, `stale` or `error`. `partial` is true when
 any federation failed or is serving stale data; the frontend surfaces that as a
 banner instead of silently showing fewer tournaments.
+
+## Frontend Development
+
+### Running the tests
+
+```bash
+node --check script/main.js     # syntax
+node script/main.test.js        # date parsing, sorting and escaping
+```
+
+Date parsing is the fragile part: federations publish dates as free text in
+several formats (`22.08. bis 23.08.`, `Sa, 15.8.2026 abgesagt`,
+`So, 16.8. – Fr, 21.8.2026`), so changes there should always be covered by a
+test case.
 
 ### Geocoding and map pins
 
