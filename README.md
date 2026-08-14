@@ -56,6 +56,56 @@ cd backend
 go run ./cmd/main.go
 ```
 
+### Running the Tests
+
+Every external dependency (federation websites and the Nominatim geocoding
+service) is mocked with local `httptest` servers, so the suite runs offline and
+deterministically.
+
+```bash
+cd backend
+
+# Full suite with the race detector (requires a C compiler for -race)
+go test -race ./...
+
+# Quick run without the race detector
+go test ./...
+
+# With coverage
+go test -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
+```
+
+HTML fixtures for the federation parsers live in
+`backend/pkg/tournament/testdata/`. When a federation changes its markup, update
+the corresponding fixture and adjust the expectations in
+`backend/pkg/tournament/tournament_test.go` in the same commit.
+
+By default the tests log at `ERROR` level. Set `TTF_LOG_LEVEL=DEBUG` to see the
+full output while debugging a failure.
+
+### Configuration
+
+| Environment variable | Default | Description |
+| --- | --- | --- |
+| `TTF_LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR`. |
+| `TTF_CACHE_PATH` | `./data/cache.bolt` | BoltDB file backing the geocoding cache. |
+| `TTF_CACHE_MEMORY` | `true` | Keep an in-memory copy of the cache. |
+| `TTF_HTTP_TIMEOUT_SECONDS` | `20` | Total timeout for federation requests. |
+| `TTF_GEOCODING_TIMEOUT_SECONDS` | `20` | Total timeout for geocoding requests. |
+| `TTF_USER_AGENT` | `TennisTournamentFinder/1.0 (+repo URL)` | `User-Agent` sent upstream. Forks should set their own contact details. |
+| `TTF_NOMINATIM_URL` | `https://nominatim.openstreetmap.org/search.php` | Geocoding endpoint. Point this at a self-hosted Nominatim instance if you need higher throughput. |
+| `TTF_NOMINATIM_INTERVAL_MS` | `1000` | Minimum spacing between uncached geocoding requests. Do not lower this for the shared public instance. |
+
+#### External service usage
+
+The public Nominatim instance requires an identifying `User-Agent` and permits
+at most one request per second. The backend enforces both: requests carry the
+agent above and are serialized process-wide by a rate limiter. Cached lookups
+never reach the network, so they do not consume that budget. See the
+[Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+before raising the request rate.
+
 ### Log Level Configuration
 
 The backend supports configurable log levels via the `TTF_LOG_LEVEL` environment variable:
