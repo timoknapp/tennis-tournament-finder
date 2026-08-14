@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"expvar"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/metrics"
@@ -22,42 +25,50 @@ var (
 	reloadMu          sync.Mutex
 )
 
+// newServer builds an HTTP server with defensive timeouts so slow or
+// malicious clients cannot hold connections open indefinitely.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MiB
+	}
+}
+
 func main() {
 	logger.Info("Starting Tennis Tournament Finder backend server...")
 
 	openstreetmap.InitCache()
 	logger.Info("OpenStreetMap cache initialized")
 
-	// Set up graceful shutdown
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		logger.Info("Shutting down gracefully...")
-		openstreetmap.CloseCache()
-		os.Exit(0)
-	}()
-
 	// Lightweight metrics (no Prometheus required)
 	metrics.Init()
 	metrics.SetReloadCallback(ReloadComponents)
 
 	// Start a localhost-only diagnostics server for /stats and /debug/vars
+	diagMux := http.NewServeMux()
+	diagMux.Handle(metrics.StatsPath, http.HandlerFunc(metrics.StatsHandler))
+	diagMux.Handle(metrics.DebugVarsPath, expvar.Handler())
+	diagMux.Handle(metrics.EnvPath, http.HandlerFunc(metrics.EnvHandler))
+	diagAddr := "127.0.0.1:9090"
+	diagServer := newServer(diagAddr, diagMux)
+
 	go func() {
-		diagMux := http.NewServeMux()
-		diagMux.Handle(metrics.StatsPath, http.HandlerFunc(metrics.StatsHandler))
-		diagMux.Handle(metrics.DebugVarsPath, expvar.Handler())
-		diagMux.Handle(metrics.EnvPath, http.HandlerFunc(metrics.EnvHandler))
-		addr := "127.0.0.1:9090"
-		logger.Info("Starting diagnostics server on http://%s%s and http://%s%s", addr, metrics.StatsPath, addr, metrics.DebugVarsPath)
-		if err := http.ListenAndServe(addr, diagMux); err != nil {
-			logger.Error("Diagnostics server failed to start on %s: %v", addr, err)
-			logger.Error("Diagnostics endpoints will NOT be available at http://%s%s, http://%s%s, or http://%s%s for this process lifetime", addr, metrics.StatsPath, addr, metrics.DebugVarsPath, addr, metrics.EnvPath)
+		logger.Info("Starting diagnostics server on http://%s%s and http://%s%s", diagAddr, metrics.StatsPath, diagAddr, metrics.DebugVarsPath)
+		if err := diagServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Diagnostics server failed to start on %s: %v", diagAddr, err)
+			logger.Error("Diagnostics endpoints will NOT be available at http://%s%s, http://%s%s, or http://%s%s for this process lifetime", diagAddr, metrics.StatsPath, diagAddr, metrics.DebugVarsPath, diagAddr, metrics.EnvPath)
 		}
 	}()
 
 	// Public API with instrumentation (served on :8080)
-	http.Handle("/", metrics.Instrument(http.HandlerFunc(tournament.GetTournaments)))
+	apiMux := http.NewServeMux()
+	apiMux.Handle("/", metrics.Instrument(http.HandlerFunc(tournament.GetTournaments)))
+	apiServer := newServer(":8080", apiMux)
 
 	// In-process scheduler (fully optional; enable with env var)
 	cfg := scheduler.FromEnv()
@@ -76,8 +87,35 @@ func main() {
 		logger.Info("Scheduler disabled (set TTF_SCHEDULER_ENABLED=true to enable)")
 	}
 
+	// Set up graceful shutdown
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		logger.Info("Shutting down gracefully...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		if err := apiServer.Shutdown(ctx); err != nil {
+			logger.Error("API server shutdown error: %v", err)
+		}
+		if err := diagServer.Shutdown(ctx); err != nil {
+			logger.Error("Diagnostics server shutdown error: %v", err)
+		}
+
+		globalSchedulerMu.Lock()
+		if globalScheduler != nil {
+			globalScheduler.Stop()
+		}
+		globalSchedulerMu.Unlock()
+
+		openstreetmap.CloseCache()
+		os.Exit(0)
+	}()
+
 	logger.Info("Starting HTTP server on port 8080...")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := apiServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("Server failed to start: %v", err)
 	}
 }
@@ -87,22 +125,22 @@ func ReloadComponents() error {
 	// Serialize reload operations to prevent concurrent execution
 	reloadMu.Lock()
 	defer reloadMu.Unlock()
-	
+
 	logger.Info("Reloading application components...")
-	
+
 	// Reload log level
 	if logLevel := os.Getenv("TTF_LOG_LEVEL"); logLevel != "" {
 		level := logger.ParseLogLevel(logLevel)
 		logger.SetLogLevel(level)
 		logger.Info("Log level updated to: %s", logLevel)
 	}
-	
+
 	// Reload scheduler configuration
 	globalSchedulerMu.Lock()
 	cfg := scheduler.FromEnv()
 	currentScheduler := globalScheduler
 	globalSchedulerMu.Unlock()
-	
+
 	if cfg.Enabled {
 		if currentScheduler == nil {
 			// Scheduler was disabled, now enable it
@@ -133,7 +171,7 @@ func ReloadComponents() error {
 			logger.Info("Scheduler disabled during configuration reload")
 		}
 	}
-	
+
 	logger.Info("Component reload completed successfully")
 	return nil
 }

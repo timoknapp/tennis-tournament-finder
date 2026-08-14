@@ -1,16 +1,20 @@
 package tournament
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/federation"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/httpclient"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
@@ -20,11 +24,36 @@ import (
 // Debug flag to control debug output - set to true to enable debug logs
 const debugEnabled = false
 
+const (
+	// pageSize is the number of results requested per page from the new API.
+	pageSize = 100
+	// maxPages bounds pagination so a malformed or endlessly repeating
+	// upstream response can never loop forever.
+	maxPages = 20
+	// maxResponseBytes bounds how much HTML is read from an upstream response.
+	maxResponseBytes = 16 << 20 // 16 MiB
+)
+
+// geocoder resolves tournament coordinates. The indirection lets tests supply a
+// deterministic implementation instead of performing network lookups.
+type geocoder func(state string, tournament models.Tournament) models.Geocoordinates
+
+// defaultGeocoder delegates to the OpenStreetMap cache/lookup.
+func defaultGeocoder(state string, tournament models.Tournament) models.Geocoordinates {
+	return openstreetmap.GetGeocoordinatesFromCache(state, tournament)
+}
+
+// FederationResult carries a single federation's outcome.
+type FederationResult struct {
+	Federation  models.Federation
+	Tournaments []models.Tournament
+	Err         error
+}
+
 func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	federations := federation.GetFederations()
 
 	util.EnableCors(&w)
-	Tournaments := []models.Tournament{}
 
 	// Print cache statistics
 	cacheStats := openstreetmap.GetCacheStatistics()
@@ -52,125 +81,324 @@ func GetTournaments(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Get Tournaments from: %s to: %s, compType: %s, federations: %s", dateFrom, dateTo, compType, selectedFederations)
 
-	// Filter federations based on selection
-	var filteredFederations []models.Federation
-	if selectedFederations != "" {
-		selectedFedIds := strings.Split(selectedFederations, ",")
-		for _, federation := range federations {
-			for _, selectedId := range selectedFedIds {
-				if federation.Id == strings.TrimSpace(selectedId) {
-					filteredFederations = append(filteredFederations, federation)
-					break
-				}
-			}
-		}
-	} else {
-		// If no specific federations selected, use all
-		filteredFederations = federations
+	filteredFederations := FilterFederations(federations, selectedFederations)
+
+	tournaments, _ := CollectTournaments(r.Context(), filteredFederations, dateFrom, dateTo, compType)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(tournaments); err != nil {
+		logger.Error("Failed to encode tournaments response: %v", err)
+	}
+}
+
+// FilterFederations returns the federations selected by a comma-separated list
+// of IDs. An empty selection means "all federations".
+func FilterFederations(federations []models.Federation, selectedFederations string) []models.Federation {
+	if strings.TrimSpace(selectedFederations) == "" {
+		return federations
 	}
 
+	selected := make(map[string]struct{})
+	for _, id := range strings.Split(selectedFederations, ",") {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			selected[trimmed] = struct{}{}
+		}
+	}
+
+	var filtered []models.Federation
+	for _, fed := range federations {
+		if _, ok := selected[fed.Id]; ok {
+			filtered = append(filtered, fed)
+		}
+	}
+
+	return filtered
+}
+
+// CollectTournaments fetches all federations concurrently and merges the
+// results deterministically.
+//
+// Every goroutine writes only to its own result slot, so no shared slice is
+// mutated concurrently. Results are ordered by the federation's input position,
+// which keeps responses stable regardless of goroutine scheduling. A failure in
+// one federation never discards results from the others.
+func CollectTournaments(ctx context.Context, federations []models.Federation, dateFrom, dateTo, compType string) ([]models.Tournament, []FederationResult) {
+	results := make([]FederationResult, len(federations))
+
 	var wg sync.WaitGroup
-	for i := 0; i < len(filteredFederations); i++ {
+	for i, fed := range federations {
 		wg.Add(1)
-		go func(fed models.Federation) {
+		go func(idx int, fed models.Federation) {
 			defer wg.Done()
-			if fed.ApiVersion == "old" {
-				tournaments := getTournamentsFromFederationOldApi(fed, dateFrom, dateTo, compType)
-				Tournaments = append(Tournaments, tournaments...)
-			} else if fed.ApiVersion == "new" {
-				tournaments := getTournamentsFromFederationNewApi(fed, dateFrom, dateTo, compType)
-				Tournaments = append(Tournaments, tournaments...)
+
+			results[idx].Federation = fed
+
+			defer func() {
+				// A panic in one federation parser must not take down the
+				// whole request.
+				if rec := recover(); rec != nil {
+					logger.Error("Recovered from panic while processing federation %s: %v", fed.Id, rec)
+					results[idx].Err = fmt.Errorf("panic while processing federation %s: %v", fed.Id, rec)
+				}
+			}()
+
+			tournaments, err := fetchFederation(ctx, fed, dateFrom, dateTo, compType)
+			if err != nil {
+				logger.Error("Federation %s failed: %v", fed.Id, err)
 			}
-		}(filteredFederations[i])
+
+			results[idx].Tournaments = tournaments
+			results[idx].Err = err
+		}(i, fed)
 	}
 	wg.Wait()
 
-	json.NewEncoder(w).Encode(Tournaments)
+	tournaments := []models.Tournament{}
+	for _, res := range results {
+		tournaments = append(tournaments, res.Tournaments...)
+	}
+
+	return tournaments, results
 }
 
-func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom string, dateTo string, compType string) []models.Tournament {
-	logger.Info("Get Tournaments in: %s from: %s to: %s, compType: %s", federation.Id, dateFrom, dateTo, compType)
-	var tournaments []models.Tournament
-
-	var baseURL = federation.Url
-	var trustedProperties = federation.TrustedProperties
-	var defaultGeocoords = federation.Geocoordinates
-	var state = federation.State
-
-	var fedRankValuation = "true"
-	// var fedRank = "20"
-	var firstResult = "0"
-	var maxResults = "100"
-	var ageCategory = "" // ""= Alle, "general" = Aktive, "juniors" = Jugend, "seniors" = Senioren
-	if compType != "" {
-		// Switch case
-		switch compType {
-		case "Herren+Einzel", "Herren+Doppel", "Damen+Einzel", "Damen+Doppel":
-			ageCategory = "general"
-		case "Senioren+Einzel", "Senioren+Doppel":
-			ageCategory = "seniors"
-		case "Jugend+Einzel", "Jugend+Doppel":
-			ageCategory = "juniors"
-		default:
-			logger.Warn("Unknown competition type: %s. Using default age category", compType)
-			ageCategory = ""
-		}
-	} else {
-		ageCategory = "" // No filter for all competitions
+// fetchFederation dispatches to the correct API implementation.
+func fetchFederation(ctx context.Context, fed models.Federation, dateFrom, dateTo, compType string) ([]models.Tournament, error) {
+	switch fed.ApiVersion {
+	case "old":
+		return getTournamentsFromFederationOldApi(ctx, fed, dateFrom, dateTo, compType)
+	case "new":
+		return getTournamentsFromFederationNewApi(ctx, fed, dateFrom, dateTo, compType)
+	default:
+		return nil, fmt.Errorf("unknown API version %q for federation %s", fed.ApiVersion, fed.Id)
 	}
+}
 
-	// Parse the base URL
-	reqURL, err := url.Parse(baseURL)
+// ageCategoryForCompType maps a competition type to the new API's age category.
+func ageCategoryForCompType(compType string) string {
+	switch compType {
+	case "":
+		// No filter for all competitions
+		return ""
+	case "Herren+Einzel", "Herren+Doppel", "Damen+Einzel", "Damen+Doppel":
+		return "general"
+	case "Senioren+Einzel", "Senioren+Doppel":
+		return "seniors"
+	case "Jugend+Einzel", "Jugend+Doppel":
+		return "juniors"
+	default:
+		logger.Warn("Unknown competition type: %s. Using default age category", compType)
+		return ""
+	}
+}
+
+// buildNewApiURL assembles a request URL for one page of the new API.
+func buildNewApiURL(fed models.Federation, dateFrom, dateTo, compType string, firstResult int) (string, error) {
+	reqURL, err := url.Parse(fed.Url)
 	if err != nil {
-		logger.Error("Failed to parse URL: %v", err)
-		return tournaments
+		return "", fmt.Errorf("failed to parse URL: %w", err)
 	}
-
-	// Add query parameters using proper URL encoding
-	q := reqURL.Query()
 
 	// Use different parameter prefixes based on federation
-	var paramPrefix string
-	if federation.Id == "RLP" {
+	paramPrefix := "tx_nuportalrs_tournaments"
+	if fed.Id == "RLP" {
 		paramPrefix = "tx_nuportalrs_nuportalrs"
-	} else {
-		paramPrefix = "tx_nuportalrs_tournaments"
 	}
 
-	q.Set(fmt.Sprintf("%s[__trustedProperties]", paramPrefix), trustedProperties)
-	q.Set(fmt.Sprintf("%s[tournamentsFilter][ageCategory]", paramPrefix), ageCategory)
-	q.Set(fmt.Sprintf("%s[tournamentsFilter][fedRankValuation]", paramPrefix), fedRankValuation)
+	q := reqURL.Query()
+	q.Set(fmt.Sprintf("%s[__trustedProperties]", paramPrefix), fed.TrustedProperties)
+	q.Set(fmt.Sprintf("%s[tournamentsFilter][ageCategory]", paramPrefix), ageCategoryForCompType(compType))
+	q.Set(fmt.Sprintf("%s[tournamentsFilter][fedRankValuation]", paramPrefix), "true")
 	q.Set(fmt.Sprintf("%s[tournamentsFilter][startDate]", paramPrefix), dateFrom)
 	q.Set(fmt.Sprintf("%s[tournamentsFilter][endDate]", paramPrefix), dateTo)
-	q.Set(fmt.Sprintf("%s[tournamentsFilter][firstResult]", paramPrefix), firstResult)
-	q.Set(fmt.Sprintf("%s[tournamentsFilter][maxResults]", paramPrefix), maxResults)
+	q.Set(fmt.Sprintf("%s[tournamentsFilter][firstResult]", paramPrefix), strconv.Itoa(firstResult))
+	q.Set(fmt.Sprintf("%s[tournamentsFilter][maxResults]", paramPrefix), strconv.Itoa(pageSize))
 	reqURL.RawQuery = q.Encode()
 
-	// Create HTTP client and request
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", reqURL.String(), nil)
-	if err != nil {
-		logger.Error("Failed to create request: %v", err)
-		return tournaments
+	return reqURL.String(), nil
+}
+
+// getTournamentsFromFederationNewApi fetches every result page for a federation
+// using the new (TYPO3/nuPortal) API.
+//
+// The upstream API caps a single response at maxResults entries, so pagination
+// is required to avoid silently truncating larger result sets.
+func getTournamentsFromFederationNewApi(ctx context.Context, fed models.Federation, dateFrom string, dateTo string, compType string) ([]models.Tournament, error) {
+	logger.Info("Get Tournaments in: %s from: %s to: %s, compType: %s", fed.Id, dateFrom, dateTo, compType)
+
+	var all []models.Tournament
+	seen := make(map[string]struct{})
+	var firstErr error
+
+	for page := 0; page < maxPages; page++ {
+		reqURL, err := buildNewApiURL(fed, dateFrom, dateTo, compType, page*pageSize)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			break
+		}
+
+		body, err := doRequest(ctx, http.MethodGet, reqURL, nil, "")
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			// Keep the pages fetched so far instead of discarding everything.
+			break
+		}
+
+		pageTournaments, parseErr := ParseNewApiDocument(body, fed, defaultGeocoder)
+		body.Close()
+
+		if parseErr != nil {
+			if firstErr == nil {
+				firstErr = parseErr
+			}
+			break
+		}
+
+		newOnPage := 0
+		for _, t := range pageTournaments {
+			key := t.Id
+			if key == "" {
+				// Fall back to a composite key when no ID could be parsed.
+				key = t.Title + "|" + t.Date
+			}
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			all = append(all, t)
+			newOnPage++
+		}
+
+		logger.Debug("Federation %s page %d: %d parsed, %d new", fed.Id, page, len(pageTournaments), newOnPage)
+
+		// Stop on a short page (the last one) or when a page adds nothing new.
+		// The latter guards against upstreams that ignore the offset parameter.
+		if len(pageTournaments) < pageSize || newOnPage == 0 {
+			break
+		}
 	}
 
-	res, err := client.Do(req)
-	if err != nil {
-		logger.Error("HTTP request failed: %v", err)
-		return tournaments
-	}
-	defer res.Body.Close()
+	logger.Info("Federation %s: Found %d tournaments total", fed.Id, len(all))
 
-	doc, err := goquery.NewDocumentFromReader(res.Body)
+	return all, firstErr
+}
+
+// getTournamentsFromFederationOldApi fetches tournaments using the old
+// (liga.nu) form-post API.
+func getTournamentsFromFederationOldApi(ctx context.Context, fed models.Federation, dateFrom string, dateTo string, compType string) ([]models.Tournament, error) {
+	logger.Info("Get Tournaments in: %s from: %s to: %s, compType: %s", fed.Id, dateFrom, dateTo, compType)
+
+	body, err := doRequest(ctx, http.MethodPost, fed.Url,
+		strings.NewReader(buildOldApiPayload(fed, dateFrom, dateTo, compType)),
+		"application/x-www-form-urlencoded")
 	if err != nil {
-		logger.Error("Failed to parse HTML document: %v", err)
+		return nil, err
+	}
+	defer body.Close()
+
+	tournaments, err := ParseOldApiDocument(body, fed, defaultGeocoder)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Info("Federation %s: Found %d tournaments total", fed.Id, len(tournaments))
+
+	return tournaments, nil
+}
+
+// buildOldApiPayload builds the form-encoded request body for the old API.
+func buildOldApiPayload(fed models.Federation, dateFrom, dateTo, compType string) string {
+	const valuationState = "1" // 0=No-LK-Status, 1=LK-Status, 2=DTB-Status
+	const region = "DE"
+
+	form := url.Values{}
+	form.Set("queryName", "")
+	form.Set("queryDateFrom", dateFrom)
+	form.Set("queryDateTo", dateTo)
+	form.Set("valuationState", valuationState)
+	form.Set("federation", fed.Id)
+	form.Set("region", region)
+	if compType != "" {
+		// compType uses "+" to separate the two words (e.g. "Herren+Einzel").
+		// url.Values encodes it safely as %2B.
+		form.Set("compType", compType)
+	}
+
+	return form.Encode()
+}
+
+// doRequest performs a bounded HTTP request and returns the response body.
+// The caller is responsible for closing the returned ReadCloser.
+func doRequest(ctx context.Context, method, reqURL string, body io.Reader, contentType string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpclient.ApplyDefaultHeaders(req)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	res, err := httpclient.Federation().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+
+	if res.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, maxResponseBytes))
+		res.Body.Close()
+		return nil, fmt.Errorf("unexpected HTTP status %d", res.StatusCode)
+	}
+
+	return newLimitedReadCloser(res.Body, maxResponseBytes), nil
+}
+
+// limitedReadCloser bounds how much of a response body can be read while still
+// closing the underlying connection correctly.
+type limitedReadCloser struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func newLimitedReadCloser(rc io.ReadCloser, limit int64) io.ReadCloser {
+	return &limitedReadCloser{reader: io.LimitReader(rc, limit), closer: rc}
+}
+
+func (l *limitedReadCloser) Read(p []byte) (int, error) { return l.reader.Read(p) }
+func (l *limitedReadCloser) Close() error               { return l.closer.Close() }
+
+// resolveGeocoordinates looks up coordinates and falls back to the federation
+// default when nothing suitable is found.
+func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, geocode geocoder, subject string) models.Geocoordinates {
+	if geocode == nil {
+		geocode = defaultGeocoder
+	}
+
+	geoCoords := geocode(fed.State, tournament)
+	if geoCoords.Lat == "" || geoCoords.Lon == "" {
+		logger.Warn("No Geocoordinates could be found for (%s): '%s'. Falling back to default in '%s'",
+			tournament.Id, subject, fed.State)
+		return fed.Geocoordinates
+	}
+
+	return geoCoords
+}
+
+// ParseNewApiDocument parses one page of the new API's HTML into tournaments.
+func ParseNewApiDocument(r io.Reader, fed models.Federation, geocode geocoder) ([]models.Tournament, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse HTML document: %w", err)
 	}
 
 	// Track tournaments by ID to group competition entries from multiple rows
 	tournamentMap := make(map[string]*models.Tournament)
-	var orderedTournaments []models.Tournament
+	var orderedTournaments []*models.Tournament
 
-	// Find the tournament items
 	doc.Find(".responsive-individual tbody tr").Each(func(idxRow int, rowTournament *goquery.Selection) {
 		var currentTournament *models.Tournament
 		var tournamentDate string
@@ -182,10 +410,10 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 
 		rowTournament.Find("td").Each(func(idxColumn int, columnTournament *goquery.Selection) {
 			// Column 0: Date, Column 1: Title; Column 2: Competition
-			value := util.RemoveFormatFromString(columnTournament.Text())
+			value := util.NormalizeWhitespace(columnTournament.Text())
 
-			if idxColumn == 0 && columnTournament.HasClass("daterange") && strings.TrimSpace(value) != "" {
-				tournamentDate = strings.TrimSpace(value)
+			if idxColumn == 0 && columnTournament.HasClass("daterange") && value != "" {
+				tournamentDate = value
 			}
 
 			if idxColumn == 1 && strings.Contains(columnTournament.Text(), "Veranstalter") {
@@ -206,7 +434,7 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 				}
 
 				if urlElement.Length() > 0 {
-					tournament.Title = strings.TrimSpace(util.RemoveFormatFromString(urlElement.Text()))
+					tournament.Title = util.NormalizeWhitespace(urlElement.Text())
 					tournament.URL, _ = urlElement.Attr("href")
 					tournament.Id = getTournamentIdByUrl(tournament.URL)
 				}
@@ -221,7 +449,7 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 						// Extract organizer - everything between "Veranstalter: " and " Austragungsort"
 						extractedOrganizer, organizerExists := util.GetStringInBetweenTwoString(paragraphText, "Veranstalter: ", " Austragungsort")
 						if organizerExists {
-							tournament.Organizer = strings.TrimSpace(extractedOrganizer)
+							tournament.Organizer = util.NormalizeWhitespace(extractedOrganizer)
 						}
 					}
 
@@ -237,7 +465,7 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 							extractedLocation, locationExists = util.GetStringInBetweenTwoString(paragraphText, "Austragungsort: ", " Offen für")
 						}
 						if locationExists {
-							tournament.Location = strings.TrimSpace(extractedLocation)
+							tournament.Location = util.NormalizeWhitespace(extractedLocation)
 						}
 					}
 
@@ -250,26 +478,24 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 
 				// Get geocoordinates if we have a location
 				if tournament.Location != "" {
-					geoCoords := openstreetmap.GetGeocoordinatesFromCache(state, tournament)
-					if geoCoords.Lat == "" || geoCoords.Lon == "" {
-						logger.Warn("No Geocoordinates could be found for (%s): '%s'. Falling back to default in '%s'", tournament.Id, tournament.Location, state)
-						geoCoords = defaultGeocoords
-					}
+					geoCoords := resolveGeocoordinates(fed, tournament, geocode, tournament.Location)
 					tournament.Lat = geoCoords.Lat
 					tournament.Lon = geoCoords.Lon
 				} else {
-					logger.Warn("Tournament location missing: %s ; Date: %s", util.RemoveFormatFromString(tournament.Title), tournament.Date)
+					logger.Warn("Tournament location missing: %s ; Date: %s", tournament.Title, tournament.Date)
 				}
 
 				if len(tournament.Title) > 0 && tournament.Id != "" {
 					if debugEnabled {
 						logger.Debug("Created tournament: ID='%s', Title='%s', Date='%s'", tournament.Id, tournament.Title, tournament.Date)
 					}
-					// Store in map for grouping and in ordered slice for maintaining order
-					tournamentMap[tournament.Id] = &tournament
-					orderedTournaments = append(orderedTournaments, tournament)
-					// Update the reference to point to the tournament in the ordered slice
-					currentTournament = &orderedTournaments[len(orderedTournaments)-1]
+
+					stored := tournament
+					// Store the same pointer in the map and the ordered slice so
+					// competition entries appended later are visible in both.
+					tournamentMap[stored.Id] = &stored
+					orderedTournaments = append(orderedTournaments, &stored)
+					currentTournament = &stored
 				}
 			} else if idxColumn == 1 && len(tournamentMap) > 0 {
 				// This might be a continuation row - try to find tournament by URL
@@ -285,7 +511,7 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 				}
 				// If no URL found, use the most recent tournament
 				if currentTournament == nil && len(orderedTournaments) > 0 {
-					currentTournament = &orderedTournaments[len(orderedTournaments)-1]
+					currentTournament = orderedTournaments[len(orderedTournaments)-1]
 				}
 			}
 
@@ -295,18 +521,8 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 				columnTournament.Find("table tbody tr").Each(func(competitionIdx int, competitionRow *goquery.Selection) {
 					var competition models.CompetitionEntry
 
-					if debugEnabled {
-						rowText := strings.TrimSpace(competitionRow.Text())
-						logger.Debug("Processing competition row %d: '%s'", competitionIdx, rowText)
-					}
-
 					competitionRow.Find("td").Each(func(colIdx int, competitionCell *goquery.Selection) {
-						cellValue := strings.TrimSpace(util.RemoveFormatFromString(competitionCell.Text()))
-
-						if debugEnabled {
-							cellClasses, _ := competitionCell.Attr("class")
-							logger.Debug("Cell %d: value='%s', classes='%s'", colIdx, cellValue, cellClasses)
-						}
+						cellValue := util.NormalizeWhitespace(competitionCell.Text())
 
 						switch colIdx {
 						case 0: // Competition name (td.name or first column)
@@ -314,76 +530,41 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 								// Extract text from span inside td.name
 								spanText := competitionCell.Find("span").Text()
 								if spanText != "" {
-									competition.Competition = strings.TrimSpace(util.RemoveFormatFromString(spanText))
+									competition.Competition = util.NormalizeWhitespace(spanText)
 								} else {
 									competition.Competition = cellValue
 								}
-							} else if colIdx == 0 && cellValue != "" {
-								// Fallback: if first column has content but no "name" class
+							} else if cellValue != "" {
+								// Fallback: first column has content but no "name" class
 								competition.Competition = cellValue
 							}
 						case 1: // Skill level (td.fedRank or second column)
-							// Check if this cell has fedRank class OR if it's the second column with content
-							if competitionCell.HasClass("fedRank") || colIdx == 1 {
-								if cellValue != "" {
-									competition.SkillLevel = cellValue
-								}
+							if cellValue != "" {
+								competition.SkillLevel = cellValue
 							}
 						case 2: // Result (td.result) - can be ignored
-							// Skip result column
 						}
 					})
 
 					// Add the competition entry if we have valid data
 					if competition.Competition != "" {
-						// Clean up skill level - remove extra whitespace
-						competition.SkillLevel = strings.TrimSpace(competition.SkillLevel)
-
-						if debugEnabled {
-							logger.Debug("Found competition: '%s' with skill level: '%s'", competition.Competition, competition.SkillLevel)
+						target := currentTournament
+						if target == nil && len(orderedTournaments) > 0 {
+							target = orderedTournaments[len(orderedTournaments)-1]
 						}
-
-						// Add to current tournament if we have one, otherwise try to find the most recent tournament
-						if currentTournament != nil {
-							currentTournament.Entries = append(currentTournament.Entries, competition)
-							// Also update the tournament in the map
-							if currentTournament.Id != "" {
-								tournamentMap[currentTournament.Id] = currentTournament
-							}
-							if debugEnabled {
-								logger.Debug("Added competition to current tournament ID='%s', now has %d entries", currentTournament.Id, len(currentTournament.Entries))
-							}
-						} else if len(orderedTournaments) > 0 {
-							// Add to the most recent tournament
-							lastTournament := &orderedTournaments[len(orderedTournaments)-1]
-							lastTournament.Entries = append(lastTournament.Entries, competition)
-							// Update in map as well
-							if lastTournament.Id != "" {
-								tournamentMap[lastTournament.Id] = lastTournament
-							}
-							if debugEnabled {
-								logger.Debug("Added competition to last tournament ID='%s', now has %d entries", lastTournament.Id, len(lastTournament.Entries))
-							}
+						if target != nil {
+							target.Entries = append(target.Entries, competition)
 						}
 					}
 				})
 			}
 		})
-
-		// No need to add competition entry here anymore since we handle them directly in the competitionAbbr column
 	})
 
-	// Convert back to slice, ensuring we have the updated tournaments with all competition entries
-	tournaments = []models.Tournament{}
-	for _, tournament := range orderedTournaments {
-		if updatedTournament, exists := tournamentMap[tournament.Id]; exists {
-			tournaments = append(tournaments, *updatedTournament)
-		} else {
-			tournaments = append(tournaments, tournament)
-		}
+	tournaments := make([]models.Tournament, 0, len(orderedTournaments))
+	for _, t := range orderedTournaments {
+		tournaments = append(tournaments, *t)
 	}
-
-	logger.Info("Federation %s: Found %d tournaments total", federation.Id, len(tournaments))
 
 	if debugEnabled {
 		for i, t := range tournaments {
@@ -391,54 +572,18 @@ func getTournamentsFromFederationNewApi(federation models.Federation, dateFrom s
 		}
 	}
 
-	return tournaments
+	return tournaments, nil
 }
 
-func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom string, dateTo string, compType string) []models.Tournament {
-	logger.Info("Get Tournaments in: %s from: %s to: %s, compType: %s", federation.Id, dateFrom, dateTo, compType)
+// ParseOldApiDocument parses the old API's result table into tournaments.
+func ParseOldApiDocument(r io.Reader, fed models.Federation, geocode geocoder) ([]models.Tournament, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse HTML document: %w", err)
+	}
+
 	var tournaments []models.Tournament
 
-	var url = federation.Url
-	var defaultGeocoords = federation.Geocoordinates
-	var state = federation.State
-
-	var valuationState = "1" // 0=No-LK-Status, 1=LK-Status, 2=DTB-Status
-	// var queryYoungOld = "2"  			// 1=Youth, 2=Adult, 3=Senior
-	// Tournament Type: Herren%2BEinzel, Herren%2BDoppel, Damen%2BEinzel, Damen%2BDoppel, Senioren%2BEinzel, Senioren%2BDoppel, Jugend%2BEinzel, Jugend%2BDoppel
-	// var fedRank = "16"               	// LK Rank: 1-23
-	var region = "DE" // Region: DE
-
-	// Build payload with optional competition type filter
-	payloadStr := "queryName=&queryDateFrom=" + dateFrom + "&queryDateTo=" + dateTo + "&valuationState=" + valuationState + "&federation=" + federation.Id + "&region=" + region
-	if compType != "" {
-		// URL encode the competition type (e.g., "Herren+Einzel" -> "Herren%2BEinzel")
-		encodedCompType := strings.ReplaceAll(compType, "+", "%2B")
-		payloadStr += "&compType=" + encodedCompType
-	}
-	payload := strings.NewReader(payloadStr)
-
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", url, payload)
-
-	if err != nil {
-		logger.Error("Failed to create HTTP request: %v", err)
-		return tournaments
-	}
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	res, err := client.Do(req)
-	if err != nil {
-		logger.Error("HTTP request failed: %v", err)
-		return tournaments
-	}
-	defer res.Body.Close()
-
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		logger.Error("Failed to parse HTML document: %v", err)
-	}
-
-	// Find the tournament items
 	doc.Find(".result-set tr").Each(func(idxRow int, rowTournament *goquery.Selection) {
 		// Skip header row
 		if idxRow == 0 {
@@ -452,50 +597,33 @@ func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom s
 		if dateCell.AttrOr("rowspan", "") != "" && titleCell.AttrOr("rowspan", "") != "" {
 			// This is a new tournament
 			var tournament models.Tournament
-
-			// Initialize slice for competition entries
 			tournament.Entries = []models.CompetitionEntry{}
 
 			var currentEntry models.CompetitionEntry
 
 			rowTournament.Find("td").Each(func(idxColumn int, columnTournament *goquery.Selection) {
-				value := util.RemoveFormatFromString(columnTournament.Text())
+				value := util.NormalizeWhitespace(columnTournament.Text())
 
 				switch idxColumn {
 				case 0: // Date
 					tournament.Date = value
 				case 1: // Title and Organizer
 					urlElement := columnTournament.Find("a")
-					tournament.Title = util.RemoveFormatFromString(urlElement.Text())
+					tournament.Title = util.NormalizeWhitespace(urlElement.Text())
 					tournament.URL, _ = urlElement.Attr("href")
 					tournament.Id = getTournamentIdByUrl(tournament.URL)
 
 					if len(tournament.Title) > 0 {
-						array := strings.Split(columnTournament.Text(), "\n\t\n\n\n")
-						var extractedOrganizer = ""
-						if len(array) > 1 {
-							extractedOrganizer = array[1]
-						} else {
-							logger.Warn("Tournament organizer missing: %s ; Date: %s", util.RemoveFormatFromString(columnTournament.Find("a").Text()), tournament.Date)
-						}
-						organizer := util.RemoveFormatFromString(extractedOrganizer)
-						tournament.Organizer = organizer
+						tournament.Organizer = extractOldApiOrganizer(columnTournament, tournament)
 
-						geoCoords := openstreetmap.GetGeocoordinatesFromCache(state, tournament)
-						if geoCoords.Lat == "" || geoCoords.Lon == "" {
-							logger.Warn("No Geocoordinates could be found for (%s): '%s'. Falling back to default in '%s'", tournament.Id, tournament.Organizer, state)
-							geoCoords = defaultGeocoords
-						}
+						geoCoords := resolveGeocoordinates(fed, tournament, geocode, tournament.Organizer)
 						tournament.Lat = geoCoords.Lat
 						tournament.Lon = geoCoords.Lon
 					}
 				case 2: // Competition (Konkurrenz)
-					currentEntry.Competition = strings.TrimSpace(value)
+					currentEntry.Competition = value
 				case 3: // Skill Level (LK)
-					currentEntry.SkillLevel = strings.TrimSpace(value)
-					if currentEntry.SkillLevel == "&nbsp;" {
-						currentEntry.SkillLevel = ""
-					}
+					currentEntry.SkillLevel = normalizeSkillLevel(value)
 				}
 			})
 
@@ -516,16 +644,13 @@ func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom s
 				var additionalEntry models.CompetitionEntry
 
 				rowTournament.Find("td").Each(func(idxColumn int, columnTournament *goquery.Selection) {
-					value := util.RemoveFormatFromString(columnTournament.Text())
+					value := util.NormalizeWhitespace(columnTournament.Text())
 
 					switch idxColumn {
 					case 0: // Competition (Konkurrenz) - first column in continuation rows
-						additionalEntry.Competition = strings.TrimSpace(value)
+						additionalEntry.Competition = value
 					case 1: // Skill Level (LK) - second column in continuation rows
-						additionalEntry.SkillLevel = strings.TrimSpace(value)
-						if additionalEntry.SkillLevel == "&nbsp;" {
-							additionalEntry.SkillLevel = ""
-						}
+						additionalEntry.SkillLevel = normalizeSkillLevel(value)
 					}
 				})
 
@@ -537,9 +662,35 @@ func getTournamentsFromFederationOldApi(federation models.Federation, dateFrom s
 		}
 	})
 
-	logger.Info("Federation %s: Found %d tournaments total", federation.Id, len(tournaments))
+	return tournaments, nil
+}
 
-	return tournaments
+// extractOldApiOrganizer pulls the organizer out of the title cell, which
+// contains the tournament link followed by the organizing club.
+func extractOldApiOrganizer(columnTournament *goquery.Selection, tournament models.Tournament) string {
+	cellText := columnTournament.Text()
+	linkText := columnTournament.Find("a").Text()
+
+	// The organizer is the cell text with the link text removed.
+	remainder := strings.Replace(cellText, linkText, "", 1)
+	organizer := util.NormalizeWhitespace(remainder)
+
+	if organizer == "" {
+		logger.Warn("Tournament organizer missing: %s ; Date: %s",
+			util.NormalizeWhitespace(linkText), tournament.Date)
+	}
+
+	return organizer
+}
+
+// normalizeSkillLevel cleans up an LK value, dropping non-breaking-space
+// placeholders that some federations emit for "no LK".
+func normalizeSkillLevel(value string) string {
+	cleaned := util.NormalizeWhitespace(value)
+	if cleaned == "&nbsp;" {
+		return ""
+	}
+	return cleaned
 }
 
 func getTournamentIdByUrl(tournamentUrl string) string {
@@ -548,7 +699,6 @@ func getTournamentIdByUrl(tournamentUrl string) string {
 	array := strings.Split(tournamentUrl, "detail/")
 	if len(array) > 1 {
 		return array[1]
-	} else {
-		return ""
 	}
+	return ""
 }
