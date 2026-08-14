@@ -98,6 +98,11 @@ full output while debugging a failure.
 | `TTF_NOMINATIM_URL` | `https://nominatim.openstreetmap.org/search.php` | Geocoding endpoint. Point this at a self-hosted Nominatim instance if you need higher throughput. |
 | `TTF_NOMINATIM_INTERVAL_MS` | `1000` | Minimum spacing between uncached geocoding requests. Do not lower this for the shared public instance. |
 | `TTF_CLUB_LOCATIONS` | *(embedded file)* | Path to a custom club location override file. |
+| `TTF_RESULT_CACHE` | `true` | Set to `false` to bypass the tournament result cache. |
+| `TTF_RESULT_CACHE_PATH` | `./data/results.bolt` | BoltDB file backing the result cache. |
+| `TTF_CACHE_TTL_MINUTES` | `120` | How long cached tournament results stay fresh. |
+| `TTF_CACHE_STALE_MINUTES` | `1440` | How long expired results may still be served when a federation is unreachable. |
+| `TTF_SCHEDULER_WARMUP_DAYS` | `30` | How far ahead the scheduled run pre-fetches. |
 
 #### External service usage
 
@@ -107,6 +112,49 @@ agent above and are serialized process-wide by a rate limiter. Cached lookups
 never reach the network, so they do not consume that budget. See the
 [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)
 before raising the request rate.
+
+### Result caching
+
+Tournament results are cached per federation and query, so a user request
+normally performs no scraping at all.
+
+* **Keyed** by federation, date range and competition type, so one slow
+  federation never holds up the others and a refresh only redoes expired work.
+* **Persistent** (BoltDB), so a restart keeps whatever the scheduler fetched.
+* **Stale-tolerant**: when a federation is unreachable, the expired copy is
+  still served (up to `TTF_CACHE_STALE_MINUTES`) and marked as stale, because
+  an out-of-date list is far more useful than an empty map.
+* **Stampede-safe**: concurrent misses for the same key trigger a single
+  upstream fetch.
+
+Cache contents are visible at `http://127.0.0.1:9090/stats` under
+`result_cache`, including how many entries are fresh, stale or expired.
+
+Enable the scheduler to keep the cache warm ahead of user traffic; it
+invalidates before fetching, so a scheduled run always retrieves current data.
+
+### API response format
+
+By default the API returns a bare JSON array of tournaments, which is what
+older clients expect.
+
+Pass `?format=full` for per-federation status, so a client can tell "no
+tournaments match" apart from "this federation is down":
+
+```json
+{
+  "tournaments": [ ... ],
+  "federations": [
+    { "id": "BAD", "name": "Badischer Tennisverband", "status": "ok", "count": 141 },
+    { "id": "WTV", "name": "Westfälischer Tennis-Verband", "status": "stale", "count": 131, "age_seconds": 7200 }
+  ],
+  "partial": true
+}
+```
+
+`status` is one of `ok`, `cached`, `stale` or `error`. `partial` is true when
+any federation failed or is serving stale data; the frontend surfaces that as a
+banner instead of silently showing fewer tournaments.
 
 ### Geocoding and map pins
 

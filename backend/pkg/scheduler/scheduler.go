@@ -2,7 +2,9 @@ package scheduler
 
 import (
 	"os"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
@@ -14,6 +16,10 @@ type Config struct {
 	CronSpec    string // e.g. "0 2 * * *" (server local time)
 	CompType    string // optional, e.g. "Herren+Einzel"
 	Federations string // optional, comma-separated IDs, empty = all
+	// WarmupDays is how far ahead the scheduled run pre-fetches. It should
+	// cover the range users actually browse, otherwise their requests miss the
+	// cache and scrape live anyway.
+	WarmupDays int
 }
 
 type Scheduler struct {
@@ -28,7 +34,39 @@ func FromEnv() Config {
 		CronSpec:    firstNonEmpty(os.Getenv("TTF_SCHEDULER_CRON"), "0 2 * * *"),
 		CompType:    os.Getenv("TTF_SCHEDULER_COMP_TYPE"),
 		Federations: os.Getenv("TTF_SCHEDULER_FEDERATIONS"),
+		WarmupDays:  warmupDaysFromEnv(),
 	}
+}
+
+// defaultWarmupDays covers the typical browsing window.
+const defaultWarmupDays = 30
+
+func warmupDaysFromEnv() int {
+	raw := os.Getenv("TTF_SCHEDULER_WARMUP_DAYS")
+	if raw == "" {
+		return defaultWarmupDays
+	}
+	days, err := strconv.Atoi(raw)
+	if err != nil || days <= 0 {
+		return defaultWarmupDays
+	}
+	return days
+}
+
+// runWarmup pre-fetches the configured window into the result cache.
+func runWarmup(cfg Config) {
+	days := cfg.WarmupDays
+	if days <= 0 {
+		days = defaultWarmupDays
+	}
+
+	now := time.Now()
+	dateFrom := now.Format("02.01.2006")
+	dateTo := now.AddDate(0, 0, days).Format("02.01.2006")
+
+	logger.Info("Scheduler tick: warming cache for %s..%s", dateFrom, dateTo)
+	total := tournament.Warmup(dateFrom, dateTo, cfg.CompType, cfg.Federations)
+	logger.Info("Scheduler warmup done, tournaments fetched: %d", total)
 }
 
 func New(cfg Config) (*Scheduler, error) {
@@ -37,9 +75,7 @@ func New(cfg Config) (*Scheduler, error) {
 		config: cfg,
 	}
 	_, err := s.c.AddFunc(cfg.CronSpec, func() {
-		logger.Info("Scheduler tick: running warmup job")
-		total := tournament.Warmup("", "", cfg.CompType, cfg.Federations)
-		logger.Info("Scheduler warmup done, tournaments fetched: %d", total)
+		runWarmup(cfg)
 	})
 	if err != nil {
 		return nil, err
@@ -72,6 +108,7 @@ func (s *Scheduler) Reload() error {
 	if s.config.CronSpec == newConfig.CronSpec &&
 		s.config.CompType == newConfig.CompType &&
 		s.config.Federations == newConfig.Federations &&
+		s.config.WarmupDays == newConfig.WarmupDays &&
 		s.config.Enabled == newConfig.Enabled {
 		logger.Info("Scheduler configuration unchanged, no restart needed")
 		return nil
@@ -89,9 +126,7 @@ func (s *Scheduler) Reload() error {
 	if newConfig.Enabled {
 		newCron := cron.New()
 		_, err := newCron.AddFunc(newConfig.CronSpec, func() {
-			logger.Info("Scheduler tick: running warmup job")
-			total := tournament.Warmup("", "", newConfig.CompType, newConfig.Federations)
-			logger.Info("Scheduler warmup done, tournaments fetched: %d", total)
+			runWarmup(newConfig)
 		})
 		if err != nil {
 			// Restore old scheduler on error

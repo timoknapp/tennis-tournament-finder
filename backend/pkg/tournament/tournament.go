@@ -18,6 +18,7 @@ import (
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/resultcache"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/util"
 )
 
@@ -48,6 +49,103 @@ type FederationResult struct {
 	Federation  models.Federation
 	Tournaments []models.Tournament
 	Err         error
+	// Cached reports that the result came from the cache without contacting
+	// the federation.
+	Cached bool
+	// Stale reports that the cached copy had expired but the refresh failed,
+	// so this is older data served deliberately instead of nothing.
+	Stale bool
+	// Age is how old the returned data is; zero for a fresh fetch.
+	Age time.Duration
+}
+
+// Status summarises a federation result for API consumers.
+func (r FederationResult) Status() string {
+	switch {
+	case r.Err != nil && len(r.Tournaments) == 0:
+		return "error"
+	case r.Stale:
+		return "stale"
+	case r.Cached:
+		return "cached"
+	default:
+		return "ok"
+	}
+}
+
+// resultCache is the process-wide tournament cache. It is nil when caching is
+// disabled, in which case every request loads directly.
+var (
+	resultCache   *resultcache.Cache
+	resultCacheMu sync.RWMutex
+)
+
+// SetResultCache installs the cache used by CollectTournaments.
+func SetResultCache(c *resultcache.Cache) {
+	resultCacheMu.Lock()
+	defer resultCacheMu.Unlock()
+	resultCache = c
+}
+
+// ResultCache returns the installed cache, or nil.
+func ResultCache() *resultcache.Cache {
+	resultCacheMu.RLock()
+	defer resultCacheMu.RUnlock()
+	return resultCache
+}
+
+// FederationStatus is the per-federation metadata returned alongside results,
+// so clients can tell "no tournaments" apart from "this source failed".
+type FederationStatus struct {
+	Id     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // ok | cached | stale | error
+	Count  int    `json:"count"`
+	// AgeSeconds is how old the data is; 0 for a fresh fetch.
+	AgeSeconds int `json:"age_seconds,omitempty"`
+	// Message is a short, non-sensitive error description.
+	Message string `json:"message,omitempty"`
+}
+
+// TournamentsResponse is the richer response shape.
+//
+// The legacy clients expect a bare JSON array, so this is only returned when
+// the caller opts in with ?format=full.
+type TournamentsResponse struct {
+	Tournaments []models.Tournament `json:"tournaments"`
+	Federations []FederationStatus  `json:"federations"`
+	// Partial reports that at least one federation failed or is stale.
+	Partial bool `json:"partial"`
+}
+
+// buildFederationStatuses converts internal results into API metadata.
+func buildFederationStatuses(results []FederationResult) ([]FederationStatus, bool) {
+	statuses := make([]FederationStatus, 0, len(results))
+	partial := false
+
+	for _, res := range results {
+		status := FederationStatus{
+			Id:     res.Federation.Id,
+			Name:   res.Federation.Name,
+			Status: res.Status(),
+			Count:  len(res.Tournaments),
+		}
+		if res.Age > 0 {
+			status.AgeSeconds = int(res.Age.Seconds())
+		}
+		if res.Err != nil {
+			// Keep the message short and free of internal detail.
+			status.Message = "Turnierdaten konnten nicht aktualisiert werden"
+			partial = true
+		}
+		if res.Stale {
+			partial = true
+		}
+
+		statuses = append(statuses, status)
+	}
+
+	return statuses, partial
 }
 
 func GetTournaments(w http.ResponseWriter, r *http.Request) {
@@ -83,9 +181,26 @@ func GetTournaments(w http.ResponseWriter, r *http.Request) {
 
 	filteredFederations := FilterFederations(federations, selectedFederations)
 
-	tournaments, _ := CollectTournaments(r.Context(), filteredFederations, dateFrom, dateTo, compType)
+	tournaments, results := CollectTournaments(r.Context(), filteredFederations, dateFrom, dateTo, compType)
 
 	w.Header().Set("Content-Type", "application/json")
+
+	// The historic contract is a bare array of tournaments. Returning an
+	// object unconditionally would break every deployed client, so the richer
+	// shape is opt-in.
+	if r.URL.Query().Get("format") == "full" {
+		statuses, partial := buildFederationStatuses(results)
+		response := TournamentsResponse{
+			Tournaments: tournaments,
+			Federations: statuses,
+			Partial:     partial,
+		}
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			logger.Error("Failed to encode tournaments response: %v", err)
+		}
+		return
+	}
+
 	if err := json.NewEncoder(w).Encode(tournaments); err != nil {
 		logger.Error("Failed to encode tournaments response: %v", err)
 	}
@@ -115,6 +230,30 @@ func FilterFederations(federations []models.Federation, selectedFederations stri
 	return filtered
 }
 
+// InvalidateCache drops cached entries for the given federations and query, so
+// the next fetch goes upstream.
+//
+// Scheduled refreshes use this: without it a warmup would read the cache it is
+// meant to refresh and become a no-op.
+func InvalidateCache(federations []models.Federation, dateFrom, dateTo, compType string) {
+	cache := ResultCache()
+	if cache == nil {
+		return
+	}
+
+	for _, fed := range federations {
+		key := resultcache.Key{
+			FederationID: fed.Id,
+			DateFrom:     dateFrom,
+			DateTo:       dateTo,
+			CompType:     compType,
+		}
+		if err := cache.Invalidate(key); err != nil {
+			logger.Warn("Failed to invalidate cache for %s: %v", fed.Id, err)
+		}
+	}
+}
+
 // CollectTournaments fetches all federations concurrently and merges the
 // results deterministically.
 //
@@ -122,8 +261,12 @@ func FilterFederations(federations []models.Federation, selectedFederations stri
 // mutated concurrently. Results are ordered by the federation's input position,
 // which keeps responses stable regardless of goroutine scheduling. A failure in
 // one federation never discards results from the others.
+//
+// Results are served from the cache when available, so a user request usually
+// performs no upstream scraping at all.
 func CollectTournaments(ctx context.Context, federations []models.Federation, dateFrom, dateTo, compType string) ([]models.Tournament, []FederationResult) {
 	results := make([]FederationResult, len(federations))
+	cache := ResultCache()
 
 	var wg sync.WaitGroup
 	for i, fed := range federations {
@@ -142,13 +285,31 @@ func CollectTournaments(ctx context.Context, federations []models.Federation, da
 				}
 			}()
 
-			tournaments, err := fetchFederation(ctx, fed, dateFrom, dateTo, compType)
-			if err != nil {
-				logger.Error("Federation %s failed: %v", fed.Id, err)
+			key := resultcache.Key{
+				FederationID: fed.Id,
+				DateFrom:     dateFrom,
+				DateTo:       dateTo,
+				CompType:     compType,
 			}
 
-			results[idx].Tournaments = tournaments
-			results[idx].Err = err
+			res := cache.Get(ctx, key, func(ctx context.Context, _ resultcache.Key) ([]models.Tournament, error) {
+				return fetchFederation(ctx, fed, dateFrom, dateTo, compType)
+			})
+
+			if res.Err != nil {
+				if res.Stale {
+					logger.Warn("Federation %s: serving cached data aged %s after refresh failure: %v",
+						fed.Id, res.Age.Round(time.Minute), res.Err)
+				} else {
+					logger.Error("Federation %s failed: %v", fed.Id, res.Err)
+				}
+			}
+
+			results[idx].Tournaments = res.Tournaments
+			results[idx].Err = res.Err
+			results[idx].Cached = res.Cached
+			results[idx].Stale = res.Stale
+			results[idx].Age = res.Age
 		}(i, fed)
 	}
 	wg.Wait()

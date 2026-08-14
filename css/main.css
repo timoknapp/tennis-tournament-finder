@@ -601,3 +601,33 @@ body {
         width: 100%;
     }
 }
+/* Notice shown when some federations are unavailable or serving older data.
+   Silently returning fewer tournaments would leave users unable to tell
+   "no matches" apart from "this source is down". */
+.data-notice {
+    padding: 8px 12px;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: center;
+    border-bottom: 1px solid transparent;
+}
+
+.data-notice.warning {
+    background-color: #fff4e5;
+    border-bottom-color: #f0c07a;
+    color: #7a4b00;
+}
+
+.data-notice.error {
+    background-color: #fdecea;
+    border-bottom-color: #f3b0aa;
+    color: #8b1a10;
+}
+
+@media (max-width: 768px) {
+    .data-notice {
+        font-size: 3.2vw;
+        padding: 2vw 3vw;
+    }
+}

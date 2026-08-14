@@ -18,7 +18,9 @@ const urlGoogleQuery = "https://maps.google.com/maps?q="
 
 const initDateFrom = new Date(Date.now());
 const initDateTo = new Date(Date.now() + (7 * 86400000));
-const MAX_SELECTED_FEDERATIONS = 3;
+// Results are cached per federation on the server, so querying many at once no
+// longer means scraping them all live.
+const MAX_SELECTED_FEDERATIONS = 0; // 0 = no limit
 const FILTER_AUTO_CLOSE_BREAKPOINT = 1024; // px
 
 document.getElementById('dateFrom').value = formatDateToInput(initDateFrom);
@@ -109,7 +111,10 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
         dateFrom = formatDateToAPI(dateFrom);
         dateTo = formatDateToAPI(dateTo);
         getTournaments(dateFrom, dateTo, compType, federations)
-        .then(tournaments => {
+        .then(response => {
+            const tournaments = response.tournaments || [];
+            renderDataNotice(response, tournaments.length);
+
             map.removeLayer(markers);
             markers = createMarkerClusterGroup();
             for (const tournament of tournaments) {
@@ -161,7 +166,7 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
 
 async function getTournaments(dateFrom, dateTo, compType, federations) {
     showSpinner();
-    let url = urlBackend + `?dateFrom=${dateFrom}&dateTo=${dateTo}`;
+    let url = urlBackend + `?dateFrom=${dateFrom}&dateTo=${dateTo}&format=full`;
     if (compType && compType !== "") {
         url += `&compType=${encodeURIComponent(compType)}`;
     }
@@ -169,26 +174,30 @@ async function getTournaments(dateFrom, dateTo, compType, federations) {
         url += `&federations=${encodeURIComponent(federations.join(','))}`;
     }
     return fetch(url)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Server antwortete mit Status ${res.status}`);
+            }
+            return res.json();
+        })
         .then(result => {
             hideSpinner();
-            // console.log(result);
-            return result;
+            // The backend still returns a bare array for older clients; accept both.
+            if (Array.isArray(result)) {
+                return { tournaments: result, federations: [], partial: false };
+            }
+            return {
+                tournaments: result.tournaments || [],
+                federations: result.federations || [],
+                partial: Boolean(result.partial)
+            };
         })
         .catch(error => {
             hideSpinner();
-            console.log('error', error);
-            return [
-                {
-                    title: "Test Tennis Turnier",
-                    url: "https://spieler.tennis.de",
-                    date: "01.01. bis 02.01.",
-                    location: "Karslruhe",
-                    organizer: "MTV Karslruhe",
-                    lat: "49.0229711",
-                    lon: "8.4179256"
-                }
-            ]
+            console.error('Failed to load tournaments:', error);
+            // Showing invented data would be worse than showing nothing: the
+            // user cannot tell a real tournament from a placeholder.
+            return { tournaments: [], federations: [], partial: true, failed: true };
         });
 }
 
@@ -244,9 +253,8 @@ function getSelectedFederations() {
 
 function selectAllFederations() {
     const checkboxes = document.querySelectorAll('input[name="federations"]');
-    // Only select up to the configured maximum federations
     checkboxes.forEach((checkbox, index) => {
-        checkbox.checked = index < MAX_SELECTED_FEDERATIONS;
+        checkbox.checked = MAX_SELECTED_FEDERATIONS <= 0 || index < MAX_SELECTED_FEDERATIONS;
     });
     updateFederationSelectionState();
 }
@@ -264,10 +272,10 @@ function setupFederationLimits() {
         checkbox.addEventListener('change', function () {
             const checkedBoxes = document.querySelectorAll('input[name="federations"]:checked');
 
-            if (checkedBoxes.length > MAX_SELECTED_FEDERATIONS) {
+            if (MAX_SELECTED_FEDERATIONS > 0 && checkedBoxes.length > MAX_SELECTED_FEDERATIONS) {
                 // If more than the allowed number are selected, uncheck the current one
                 this.checked = false;
-                alert(`Sie können maximal ${MAX_SELECTED_FEDERATIONS} Verbände gleichzeitig auswählen, um die Serverbelastung zu reduzieren.`);
+                alert(`Sie können maximal ${MAX_SELECTED_FEDERATIONS} Verbände gleichzeitig auswählen.`);
             }
 
             updateFederationSelectionState();
@@ -277,13 +285,15 @@ function setupFederationLimits() {
     // Respect the pre-selection from the markup, but never exceed the limit.
     // Falling back to "the first N checkboxes" would silently change which
     // federations are queried whenever the list order changes.
-    const preselected = Array.from(checkboxes).filter(cb => cb.checked);
-    if (preselected.length === 0 || preselected.length > MAX_SELECTED_FEDERATIONS) {
-        const keep = (preselected.length ? preselected : Array.from(checkboxes))
-            .slice(0, MAX_SELECTED_FEDERATIONS);
-        checkboxes.forEach(cb => {
-            cb.checked = keep.includes(cb);
-        });
+    if (MAX_SELECTED_FEDERATIONS > 0) {
+        const preselected = Array.from(checkboxes).filter(cb => cb.checked);
+        if (preselected.length === 0 || preselected.length > MAX_SELECTED_FEDERATIONS) {
+            const keep = (preselected.length ? preselected : Array.from(checkboxes))
+                .slice(0, MAX_SELECTED_FEDERATIONS);
+            checkboxes.forEach(cb => {
+                cb.checked = keep.includes(cb);
+            });
+        }
     }
     updateFederationSelectionState();
 }
@@ -291,15 +301,56 @@ function setupFederationLimits() {
 function updateFederationSelectionState() {
     const checkboxes = document.querySelectorAll('input[name="federations"]');
     const checkedBoxes = document.querySelectorAll('input[name="federations"]:checked');
-    
-    // Disable unchecked boxes if limit is reached
+
+    // Disable unchecked boxes only when a limit is configured
     checkboxes.forEach(checkbox => {
-        if (!checkbox.checked && checkedBoxes.length >= MAX_SELECTED_FEDERATIONS) {
+        if (MAX_SELECTED_FEDERATIONS > 0 && !checkbox.checked &&
+            checkedBoxes.length >= MAX_SELECTED_FEDERATIONS) {
             checkbox.disabled = true;
         } else {
             checkbox.disabled = false;
         }
     });
+}
+
+// renderDataNotice surfaces stale or failed federations.
+//
+// Silently returning fewer tournaments is the worst outcome: the user cannot
+// tell "no tournaments match" from "this federation is down".
+function renderDataNotice(response, tournamentCount) {
+    const notice = document.getElementById('dataNotice');
+    if (!notice) {
+        return;
+    }
+
+    if (response.failed) {
+        notice.textContent = 'Turnierdaten konnten nicht geladen werden. Bitte später erneut versuchen.';
+        notice.className = 'data-notice error';
+        notice.style.display = 'block';
+        return;
+    }
+
+    const problems = (response.federations || []).filter(f => f.status === 'error' || f.status === 'stale');
+    if (problems.length === 0) {
+        notice.style.display = 'none';
+        notice.textContent = '';
+        return;
+    }
+
+    const failed = problems.filter(f => f.status === 'error').map(f => f.id);
+    const stale = problems.filter(f => f.status === 'stale').map(f => f.id);
+
+    const parts = [];
+    if (failed.length > 0) {
+        parts.push(`${failed.join(', ')} nicht erreichbar`);
+    }
+    if (stale.length > 0) {
+        parts.push(`${stale.join(', ')} zeigt ältere Daten`);
+    }
+
+    notice.textContent = `Hinweis: ${parts.join(' · ')}. Angezeigt werden ${tournamentCount} Turniere.`;
+    notice.className = 'data-notice warning';
+    notice.style.display = 'block';
 }
 
 function toggleFilters() {

@@ -176,6 +176,7 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 		RequestsPerMinuteLast10m:  rpm,
 		ActiveUsers5m:             int64(len(st.active)),
 		RequestsByMethodAndStatus: methodStatus,
+		ResultCache:               resultCacheSnapshot(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -195,7 +196,35 @@ type stats struct {
 	RequestsPerMinuteLast10m  []int64                     `json:"requests_last_10m_newest_first"`
 	ActiveUsers5m             int64                       `json:"active_users_5m"`
 	RequestsByMethodAndStatus map[string]map[string]int64 `json:"requests_by_method_status"`
+	ResultCache               any                         `json:"result_cache,omitempty"`
 }
+
+// resultCacheProvider supplies cache statistics for the diagnostics endpoint.
+// It is a function so this package does not import the cache (which would
+// create an import cycle through the tournament package).
+var (
+	resultCacheProvider   func() any
+	resultCacheProviderMu sync.RWMutex
+)
+
+// SetResultCacheProvider registers a source of result-cache statistics.
+func SetResultCacheProvider(fn func() any) {
+	resultCacheProviderMu.Lock()
+	defer resultCacheProviderMu.Unlock()
+	resultCacheProvider = fn
+}
+
+func resultCacheSnapshot() any {
+	resultCacheProviderMu.RLock()
+	fn := resultCacheProvider
+	resultCacheProviderMu.RUnlock()
+
+	if fn == nil {
+		return nil
+	}
+	return fn()
+}
+
 type metricsState struct {
 	mu sync.Mutex
 
