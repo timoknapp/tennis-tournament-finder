@@ -631,3 +631,242 @@ body {
         padding: 2vw 3vw;
     }
 }
+
+/* ===== View toggle and list view ===== */
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.viewToggle {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    /* Must sit above the sidebar (z-index 10000), which spans the full width
+       on small screens and would otherwise swallow the clicks. */
+    z-index: 10001;
+    display: flex;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.viewToggleBtn {
+    padding: 8px 14px;
+    border: none;
+    background-color: #fff;
+    color: #333;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.viewToggleBtn:not(:last-child) {
+    border-right: 1px solid #ddd;
+}
+
+.viewToggleBtn.active {
+    background-color: #4a7c2f;
+    color: #fff;
+}
+
+/* Keyboard users must be able to see which control has focus. */
+.viewToggleBtn:focus-visible,
+.map-button:focus-visible,
+.tournament-list a:focus-visible {
+    outline: 3px solid #1a73e8;
+    outline-offset: 2px;
+}
+
+.list-view {
+    background-color: #f5f5f5;
+    box-sizing: border-box;
+    padding: 16px;
+    min-height: 100vh;
+}
+
+/* In the list view the sidebar must not float above the results: it moves
+   into the normal document flow so the filters sit above the list. */
+body.list-mode .sideBar {
+    position: static;
+    width: auto;
+    left: auto;
+    margin: 10px auto;
+    max-width: 900px;
+    /* The map layout offsets the sidebar and its children; in the normal flow
+       those offsets push content past the viewport and cause sideways
+       scrolling on phones. */
+    padding: 0 8px;
+    box-sizing: border-box;
+}
+
+body.list-mode .filter {
+    left: 0;
+}
+
+body.list-mode .sideBarElement {
+    width: 100%;
+    /* The map layout offsets the sidebar by 8px; in the normal flow that
+       offset pushes the element past the viewport and causes sideways
+       scrolling on phones. */
+    left: 0;
+}
+
+body.list-mode .viewToggle {
+    position: static;
+    margin: 10px auto 0;
+    max-width: 900px;
+    width: max-content;
+}
+
+.list-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 900px;
+    margin: 0 auto 16px;
+    font-size: 14px;
+}
+
+.list-controls select {
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.list-count {
+    margin-left: auto;
+    color: #555;
+}
+
+.tournament-list {
+    list-style: none;
+    margin: 0 auto;
+    padding: 0;
+    max-width: 900px;
+}
+
+.tournament-item {
+    background-color: #fff;
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.tournament-title {
+    margin: 0 0 8px;
+    font-size: 16px;
+    line-height: 1.3;
+}
+
+.tournament-meta {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 10px;
+    margin: 0 0 8px;
+    font-size: 14px;
+}
+
+.tournament-meta dt {
+    font-weight: bold;
+    color: #555;
+}
+
+.tournament-meta dd {
+    margin: 0;
+}
+
+.tournament-competitions {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 8px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.tournament-competitions li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 0;
+}
+
+.competition-lk {
+    color: #555;
+    white-space: nowrap;
+}
+
+.tournament-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.map-button {
+    padding: 6px 12px;
+    border: 1px solid #4a7c2f;
+    border-radius: 4px;
+    background-color: #fff;
+    color: #4a7c2f;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.map-button:hover {
+    background-color: #f0f6ec;
+}
+
+.list-empty {
+    max-width: 900px;
+    margin: 24px auto;
+    text-align: center;
+    color: #555;
+}
+
+@media (max-width: 768px) {
+    /* On phones the sidebar occupies the top of the screen, so the toggle
+       moves to the bottom where it cannot collide with the filters. */
+    .viewToggle {
+        top: auto;
+        bottom: 12px;
+        right: 12px;
+    }
+
+    body.list-mode .viewToggle {
+        position: fixed;
+    }
+
+    /* Touch targets should be at least ~44px; the toggle is the primary way
+       to switch views on a phone. */
+    .viewToggleBtn {
+        padding: 12px 20px;
+        font-size: 3.8vw;
+        min-height: 44px;
+    }
+
+    .list-view {
+        padding: 14vw 3vw 6vw;
+    }
+
+    .list-controls,
+    .tournament-meta,
+    .tournament-item {
+        font-size: 3.4vw;
+    }
+
+    .tournament-title {
+        font-size: 4vw;
+    }
+}
