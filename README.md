@@ -18,14 +18,20 @@
 
 * Currently supported tennis federations:
   * [Badischer Tennis Verband (BAD)](https://www.badischertennisverband.de/)
+  * [Hamburger Tennisverband (HAM)](https://www.hamburger-tennisverband.de)
   * [Hessischer Tennis Verband (HTV)](https://www.htv-tennis.de/)
   * [Rheinland-Pfälzischer Tennis Verband (RPTV)](https://www.rlp-tennis.de/)
+  * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
   * [Sächsischer Tennis Verband (STV)](https://www.stv-tennis.de)
   * [Tennisverband Mecklenburg-Vorpommern (TMV)](https://www.tennis-mv.de)
+  * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
   * [Tennisverband Sachsen-Anhalt (TSA)](https://www.tennis-tsa.de)
   * [Thüringer Tennis-Verband (TTV)](https://www.ttv-tennis.de)
+  * [Tennis-Verband Berlin-Brandenburg (TVBB)](https://www.tvbb.de)
+  * [Tennisverband Mittelrhein (TVM)](https://www.tvm-tennis.de)
   * [Tennis-Verband Niederrhein (TVN)](https://www.tvn-tennis.de)
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
+  * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Helps you finding the tournaments around you
 * Lets you filter tournaments by date, competition type, and federation
 * Short link to the official Tournament at [tennis.de](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
@@ -35,14 +41,9 @@
 ### Soon
 
 * Support for more tennis federations:
-  * [Bayerischer Tennis Verband (BTV)](https://www.btv.de)
-  * [Tennis-Verband Berlin-Brandenburg (TVBB)](https://www.tvbb.de)
-  * [Hamburger Tennis-Verband](https://www.hamburger-tennisverband.de)
-  * [Tennisverband Mittelrhein (TVM)](https://www.tvm-tennis.de)
-  * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
-  * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
+  * [Bayerischer Tennis Verband (BTV)](https://www.btv.de) — no longer served by
+    liga.nu, so it needs its own parser
   * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis.sh)
-  * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Store favorite tournaments (locally)
 
 ## Backend Development
@@ -96,6 +97,7 @@ full output while debugging a failure.
 | `TTF_USER_AGENT` | `TennisTournamentFinder/1.0 (+repo URL)` | `User-Agent` sent upstream. Forks should set their own contact details. |
 | `TTF_NOMINATIM_URL` | `https://nominatim.openstreetmap.org/search.php` | Geocoding endpoint. Point this at a self-hosted Nominatim instance if you need higher throughput. |
 | `TTF_NOMINATIM_INTERVAL_MS` | `1000` | Minimum spacing between uncached geocoding requests. Do not lower this for the shared public instance. |
+| `TTF_CLUB_LOCATIONS` | *(embedded file)* | Path to a custom club location override file. |
 
 #### External service usage
 
@@ -105,6 +107,50 @@ agent above and are serialized process-wide by a rate limiter. Cached lookups
 never reach the network, so they do not consume that budget. See the
 [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)
 before raising the request rate.
+
+### Geocoding and map pins
+
+Federations publish only a club name, never a postal address, so the venue's
+city has to be derived from that name. Resolution happens in this order:
+
+1. **Curated overrides** — `backend/pkg/clublocations/data/club-locations.json`
+2. **Name heuristics** — `backend/pkg/placename`
+3. **Federation default coordinates** — last resort; several tournaments then
+   share one marker
+
+#### Fixing a wrong map pin
+
+If a tournament shows up in the wrong place, add an entry to
+`backend/pkg/clublocations/data/club-locations.json`. No code change is needed:
+
+```json
+{
+  "contains": "Lohausener",
+  "city": "Düsseldorf",
+  "state": "Nordrhein-Westfalen",
+  "note": "Lohausen is a district of Düsseldorf; not derivable from the name."
+}
+```
+
+* Use `match` for an exact club name or `contains` for a substring.
+* Matching ignores case, punctuation, umlaut spelling and extra spaces.
+* Prefer `city` (it gets geocoded). Use `lat`/`lon` only when even the city is
+  ambiguous.
+* Exact matches beat `contains`; among `contains` entries the longest wins.
+* `note` is required by the tests — explain why the automatic extraction fails.
+
+A different file can be supplied with `TTF_CLUB_LOCATIONS`.
+
+#### Measuring accuracy
+
+`cmd/geobench` resolves a benchmark set of real club names against a live
+Nominatim instance and reports the hit rate. It performs rate-limited network
+requests, so it is a manual tool and is never run by CI:
+
+```bash
+cd backend
+go run ./cmd/geobench      # add -v for coordinates and matched place names
+```
 
 ### Log Level Configuration
 
