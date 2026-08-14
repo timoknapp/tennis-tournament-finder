@@ -18,6 +18,7 @@ import (
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/resultcache"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/tournament"
 )
 
@@ -604,5 +605,286 @@ func TestMockServersUseAbsoluteURLs(t *testing.T) {
 	u, err := url.Parse(srv.URL)
 	if err != nil || !u.IsAbs() {
 		t.Fatalf("httptest server URL %q is not absolute: %v", srv.URL, err)
+	}
+}
+
+// withResultCache installs a fresh in-memory result cache for one test.
+func withResultCache(t *testing.T, opts resultcache.Options) *resultcache.Cache {
+	t.Helper()
+
+	cache := resultcache.New(resultcache.NewMemoryStore(), opts)
+	tournament.SetResultCache(cache)
+	t.Cleanup(func() { tournament.SetResultCache(nil) })
+
+	return cache
+}
+
+// TestEndToEndResultsAreCachedAcrossRequests is the core benefit of the result
+// cache: repeated user requests must not re-scrape the federation.
+func TestEndToEndResultsAreCachedAcrossRequests(t *testing.T) {
+	initIsolatedCache(t)
+	mockNominatim(t, "Karlsruhe, Baden-Württemberg, Deutschland", "49.0069", "8.4037")
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	var fetches int64
+	fedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&fetches, 1)
+		fmt.Fprint(w, oldAPIResponse)
+	}))
+	defer fedSrv.Close()
+
+	fed := models.Federation{
+		Id: "BAD", Url: fedSrv.URL, State: "Baden-Württemberg", ApiVersion: "old",
+		Geocoordinates: models.Geocoordinates{Lat: "49.0", Lon: "8.4"},
+	}
+
+	for i := 0; i < 5; i++ {
+		tournaments, results := tournament.CollectTournaments(
+			context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", "")
+
+		if results[0].Err != nil {
+			t.Fatalf("run %d error: %v", i, results[0].Err)
+		}
+		if len(tournaments) != 1 {
+			t.Fatalf("run %d returned %d tournaments, want 1", i, len(tournaments))
+		}
+		if i > 0 && !results[0].Cached {
+			t.Errorf("run %d was not served from cache", i)
+		}
+	}
+
+	if got := atomic.LoadInt64(&fetches); got != 1 {
+		t.Errorf("scraped the federation %d times across 5 requests, want 1", got)
+	}
+}
+
+// TestEndToEndStaleDataSurvivesFederationOutage covers the resilience the
+// cache buys: an upstream going down must not empty the map.
+func TestEndToEndStaleDataSurvivesFederationOutage(t *testing.T) {
+	initIsolatedCache(t)
+	mockNominatim(t, "Karlsruhe, Baden-Württemberg, Deutschland", "49.0069", "8.4037")
+
+	clock := &testClock{now: time.Now()}
+	withResultCache(t, resultcache.Options{
+		TTL: time.Hour, StaleTTL: 24 * time.Hour, Now: clock.Now,
+	})
+
+	var healthy atomic.Bool
+	healthy.Store(true)
+
+	fedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !healthy.Load() {
+			http.Error(w, "down for maintenance", http.StatusBadGateway)
+			return
+		}
+		fmt.Fprint(w, oldAPIResponse)
+	}))
+	defer fedSrv.Close()
+
+	fed := models.Federation{
+		Id: "BAD", Url: fedSrv.URL, State: "Baden-Württemberg", ApiVersion: "old",
+		Geocoordinates: models.Geocoordinates{Lat: "49.0", Lon: "8.4"},
+	}
+
+	// Populate the cache while the federation is healthy.
+	if _, results := tournament.CollectTournaments(
+		context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", ""); results[0].Err != nil {
+		t.Fatalf("warmup error: %v", results[0].Err)
+	}
+
+	// Expire the entry and take the federation down.
+	clock.Advance(2 * time.Hour)
+	healthy.Store(false)
+
+	tournaments, results := tournament.CollectTournaments(
+		context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", "")
+
+	if len(tournaments) != 1 {
+		t.Fatalf("got %d tournaments during the outage, want the stale copy", len(tournaments))
+	}
+	if !results[0].Stale {
+		t.Error("result was not reported as stale")
+	}
+	if results[0].Status() != "stale" {
+		t.Errorf("Status() = %q, want stale", results[0].Status())
+	}
+	if results[0].Age < 2*time.Hour {
+		t.Errorf("Age = %v, want at least 2h", results[0].Age)
+	}
+}
+
+// TestEndToEndConcurrentRequestsScrapeOnce covers the stampede guard in the
+// real request path.
+func TestEndToEndConcurrentRequestsScrapeOnce(t *testing.T) {
+	initIsolatedCache(t)
+	mockNominatim(t, "Karlsruhe, Baden-Württemberg, Deutschland", "49.0069", "8.4037")
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	var fetches int64
+	fedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&fetches, 1)
+		time.Sleep(50 * time.Millisecond) // widen the race window
+		fmt.Fprint(w, oldAPIResponse)
+	}))
+	defer fedSrv.Close()
+
+	fed := models.Federation{
+		Id: "BAD", Url: fedSrv.URL, State: "Baden-Württemberg", ApiVersion: "old",
+		Geocoordinates: models.Geocoordinates{Lat: "49.0", Lon: "8.4"},
+	}
+
+	const callers = 20
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for i := 0; i < callers; i++ {
+		go func() {
+			defer wg.Done()
+			tournament.CollectTournaments(
+				context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", "")
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&fetches); got != 1 {
+		t.Errorf("scraped %d times for %d concurrent requests, want 1", got, callers)
+	}
+}
+
+func TestEndToEndFullFormatReportsFederationStatus(t *testing.T) {
+	initIsolatedCache(t)
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/?dateFrom=01.08.2026&dateTo=02.08.2026&federations=DOES_NOT_EXIST&format=full", nil)
+	rec := httptest.NewRecorder()
+
+	tournament.GetTournaments(rec, req)
+
+	res := rec.Result()
+	defer res.Body.Close()
+
+	var decoded tournament.TournamentsResponse
+	if err := json.NewDecoder(res.Body).Decode(&decoded); err != nil {
+		t.Fatalf("response is not the full format: %v", err)
+	}
+
+	if decoded.Tournaments == nil {
+		t.Error("tournaments must be an empty array, not null")
+	}
+	if decoded.Partial {
+		t.Error("Partial = true, want false when nothing failed")
+	}
+}
+
+// TestEndToEndLegacyFormatUnchanged protects the deployed frontend: the
+// default response must stay a bare JSON array.
+func TestEndToEndLegacyFormatUnchanged(t *testing.T) {
+	initIsolatedCache(t)
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/?dateFrom=01.08.2026&dateTo=02.08.2026&federations=DOES_NOT_EXIST", nil)
+	rec := httptest.NewRecorder()
+
+	tournament.GetTournaments(rec, req)
+
+	body := rec.Body.String()
+	if !strings.HasPrefix(strings.TrimSpace(body), "[") {
+		t.Errorf("legacy response = %q, want a bare JSON array", body)
+	}
+
+	var decoded []models.Tournament
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("legacy response does not decode as an array: %v", err)
+	}
+}
+
+// testClock drives cache expiry deterministically.
+type testClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+// TestEndToEndWarmupRefreshesCache is the property that makes the scheduler
+// useful: a scheduled run must fetch current data rather than reading back the
+// cache it is supposed to refresh.
+func TestEndToEndWarmupRefreshesCache(t *testing.T) {
+	initIsolatedCache(t)
+	mockNominatim(t, "Karlsruhe, Baden-Württemberg, Deutschland", "49.0069", "8.4037")
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	var fetches int64
+	fedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&fetches, 1)
+		fmt.Fprint(w, oldAPIResponse)
+	}))
+	defer fedSrv.Close()
+
+	fed := models.Federation{
+		Id: "BAD", Url: fedSrv.URL, State: "Baden-Württemberg", ApiVersion: "old",
+		Geocoordinates: models.Geocoordinates{Lat: "49.0", Lon: "8.4"},
+	}
+
+	// Populate the cache through the normal request path.
+	tournament.CollectTournaments(
+		context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", "")
+	afterRequest := atomic.LoadInt64(&fetches)
+
+	// A scheduled refresh invalidates first, so it must re-fetch despite the
+	// entry still being fresh.
+	tournament.InvalidateCache([]models.Federation{fed}, "01.08.2026", "15.08.2026", "")
+	tournament.CollectTournaments(
+		context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", "")
+
+	if got := atomic.LoadInt64(&fetches); got <= afterRequest {
+		t.Errorf("warmup made no new fetch (%d before, %d after); the cache was served back to itself",
+			afterRequest, got)
+	}
+}
+
+// TestEndToEndCacheKeysAreQuerySpecific ensures a different date range or
+// competition filter is not served stale data from another query.
+func TestEndToEndCacheKeysAreQuerySpecific(t *testing.T) {
+	initIsolatedCache(t)
+	mockNominatim(t, "Karlsruhe, Baden-Württemberg, Deutschland", "49.0069", "8.4037")
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	var fetches int64
+	fedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&fetches, 1)
+		fmt.Fprint(w, oldAPIResponse)
+	}))
+	defer fedSrv.Close()
+
+	fed := models.Federation{
+		Id: "BAD", Url: fedSrv.URL, State: "Baden-Württemberg", ApiVersion: "old",
+		Geocoordinates: models.Geocoordinates{Lat: "49.0", Lon: "8.4"},
+	}
+
+	queries := []struct{ from, to, comp string }{
+		{"01.08.2026", "15.08.2026", ""},
+		{"01.09.2026", "15.09.2026", ""},
+		{"01.08.2026", "15.08.2026", "Damen+Einzel"},
+	}
+
+	for _, q := range queries {
+		tournament.CollectTournaments(
+			context.Background(), []models.Federation{fed}, q.from, q.to, q.comp)
+	}
+
+	if got := atomic.LoadInt64(&fetches); got != int64(len(queries)) {
+		t.Errorf("made %d fetches for %d distinct queries, want one each", got, len(queries))
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/metrics"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/resultcache"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/scheduler"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/tournament"
 )
@@ -23,6 +24,7 @@ var (
 	globalScheduler   *scheduler.Scheduler
 	globalSchedulerMu sync.Mutex
 	reloadMu          sync.Mutex
+	globalResultCache *resultcache.Cache
 )
 
 // newServer builds an HTTP server with defensive timeouts so slow or
@@ -39,11 +41,55 @@ func newServer(addr string, handler http.Handler) *http.Server {
 	}
 }
 
+// initResultCache wires up the tournament result cache.
+//
+// A failure to open the persistent store is not fatal: caching falls back to
+// memory, which still spares the federations most of the load and only costs
+// the cache contents on restart.
+func initResultCache() {
+	if !resultcache.Enabled() {
+		logger.Info("Result cache disabled (TTF_RESULT_CACHE=false)")
+		return
+	}
+
+	path := os.Getenv("TTF_RESULT_CACHE_PATH")
+	if path == "" {
+		path = "./data/results.bolt"
+	}
+
+	var store resultcache.Store
+	boltStore, err := resultcache.NewBoltStore(path)
+	if err != nil {
+		logger.Error("Failed to open result cache at %s, falling back to memory: %v", path, err)
+		store = resultcache.NewMemoryStore()
+	} else {
+		store = boltStore
+	}
+
+	opts := resultcache.OptionsFromEnv()
+	cache := resultcache.New(store, opts)
+	tournament.SetResultCache(cache)
+	globalResultCache = cache
+
+	// Expose cache contents through /stats so freshness is observable.
+	metrics.SetResultCacheProvider(func() any {
+		stats, err := cache.Stats()
+		if err != nil {
+			return map[string]string{"error": err.Error()}
+		}
+		return stats
+	})
+
+	logger.Info("Result cache enabled (path=%s, ttl=%s, stale=%s)", path, opts.TTL, opts.StaleTTL)
+}
+
 func main() {
 	logger.Info("Starting Tennis Tournament Finder backend server...")
 
 	openstreetmap.InitCache()
 	logger.Info("OpenStreetMap cache initialized")
+
+	initResultCache()
 
 	// Lightweight metrics (no Prometheus required)
 	metrics.Init()
@@ -109,6 +155,12 @@ func main() {
 			globalScheduler.Stop()
 		}
 		globalSchedulerMu.Unlock()
+
+		if globalResultCache != nil {
+			if err := globalResultCache.Close(); err != nil {
+				logger.Error("Result cache shutdown error: %v", err)
+			}
+		}
 
 		openstreetmap.CloseCache()
 		os.Exit(0)
