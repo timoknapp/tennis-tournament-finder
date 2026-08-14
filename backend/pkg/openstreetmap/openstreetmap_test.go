@@ -161,14 +161,17 @@ func TestGeocodingRespectsRateLimit(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	if got := mock.callCount(); got != requests {
-		t.Fatalf("made %d requests, want %d", got, requests)
+	// Each tournament may need several candidate lookups, so assert on the
+	// enforced spacing rather than an exact request count.
+	calls := mock.callCount()
+	if calls < requests {
+		t.Fatalf("made %d requests, want at least %d", calls, requests)
 	}
 
-	// Three gaps between four requests.
-	minExpected := 3 * 120 * time.Millisecond
+	minExpected := time.Duration(calls-1) * 120 * time.Millisecond
 	if elapsed < minExpected {
-		t.Errorf("elapsed %v, want at least %v (rate limit not enforced)", elapsed, minExpected)
+		t.Errorf("elapsed %v for %d requests, want at least %v (rate limit not enforced)",
+			elapsed, calls, minExpected)
 	}
 }
 
@@ -183,13 +186,19 @@ func TestGeocodingCacheHitsSkipUpstreamAndRateLimit(t *testing.T) {
 	// A different tournament at the same location must reuse the cached entry.
 	tournamentB := models.Tournament{Id: "2", Location: "Karlsruhe", Organizer: "TC Karlsruhe"}
 
+	GetGeocoordinatesFromCache("Baden-Württemberg", tournamentA)
+	afterFirst := mock.callCount()
+	if afterFirst == 0 {
+		t.Fatal("no upstream request was made for the first lookup")
+	}
+
 	for i := 0; i < 5; i++ {
 		GetGeocoordinatesFromCache("Baden-Württemberg", tournamentA)
 		GetGeocoordinatesFromCache("Baden-Württemberg", tournamentB)
 	}
 
-	if got := mock.callCount(); got != 1 {
-		t.Errorf("made %d upstream requests, want 1 (rest served from cache)", got)
+	if got := mock.callCount(); got != afterFirst {
+		t.Errorf("made %d upstream requests, want %d (rest served from cache)", got, afterFirst)
 	}
 }
 
@@ -206,12 +215,16 @@ func TestFailedLookupsUseTheSameCacheKeys(t *testing.T) {
 
 	tournament := models.Tournament{Id: "1", Location: "Unbekanntstadt", Organizer: "TC Unbekannt"}
 
-	// First attempt performs the lookup and records the failure.
+	// First attempt performs the lookup and records the failure. Several
+	// place-name candidates are derived from the location and organizer, so
+	// more than one upstream request is expected here; what matters is that
+	// the attempt is recorded under the shared cache keys.
 	if got := GetGeocoordinatesFromCache("Baden-Württemberg", tournament); got.Lat != "" {
 		t.Errorf("expected no coordinates, got %+v", got)
 	}
-	if got := mock.callCount(); got != 1 {
-		t.Fatalf("made %d requests on first attempt, want 1", got)
+	firstRound := mock.callCount()
+	if firstRound == 0 {
+		t.Fatal("no geocoding request was made on the first attempt")
 	}
 
 	// The failure must be visible under the location key.
@@ -224,19 +237,19 @@ func TestFailedLookupsUseTheSameCacheKeys(t *testing.T) {
 		t.Errorf("cached entry = %+v, want IsFailed with FailCount 1", cached)
 	}
 
-	// Subsequent attempts must be suppressed by the backoff.
+	// Subsequent attempts must be suppressed entirely by the backoff.
 	for i := 0; i < 3; i++ {
 		GetGeocoordinatesFromCache("Baden-Württemberg", tournament)
 	}
-	if got := mock.callCount(); got != 1 {
-		t.Errorf("made %d requests total, want 1 (backoff not honoured)", got)
+	if got := mock.callCount(); got != firstRound {
+		t.Errorf("made %d requests total, want %d (backoff not honoured)", got, firstRound)
 	}
 
 	// A different tournament at the same location must also be suppressed.
 	other := models.Tournament{Id: "999", Location: "Unbekanntstadt", Organizer: "TC Unbekannt"}
 	GetGeocoordinatesFromCache("Baden-Württemberg", other)
-	if got := mock.callCount(); got != 1 {
-		t.Errorf("made %d requests, want 1 (per-location backoff not shared)", got)
+	if got := mock.callCount(); got != firstRound {
+		t.Errorf("made %d requests, want %d (per-location backoff not shared)", got, firstRound)
 	}
 }
 
@@ -250,8 +263,13 @@ func TestFailureCountIncrementsAcrossRetries(t *testing.T) {
 	tournament := models.Tournament{Id: "1", Location: "Nirgendwo", Organizer: "TC Nirgendwo"}
 	locKey := generateLocationCacheKey(tournament.Location, "Baden-Württemberg")
 
+	var perRound int64
 	for attempt := 1; attempt <= 3; attempt++ {
+		before := mock.callCount()
 		GetGeocoordinatesFromCache("Baden-Württemberg", tournament)
+		if attempt == 1 {
+			perRound = mock.callCount() - before
+		}
 
 		cached, found := getFromCache(locKey)
 		if !found {
@@ -272,8 +290,11 @@ func TestFailureCountIncrementsAcrossRetries(t *testing.T) {
 		}
 	}
 
-	if got := mock.callCount(); got != 3 {
-		t.Errorf("made %d requests, want 3", got)
+	if perRound == 0 {
+		t.Fatal("first attempt made no upstream request")
+	}
+	if got, want := mock.callCount(), 3*perRound; got != want {
+		t.Errorf("made %d requests, want %d (%d rounds x %d)", got, want, 3, perRound)
 	}
 }
 
@@ -320,8 +341,8 @@ func TestSuccessAfterFailureClearsFailureState(t *testing.T) {
 		t.Errorf("stored entry = %+v, want failure state cleared", stored)
 	}
 
-	if got := mock.callCount(); got != 2 {
-		t.Errorf("made %d requests, want 2", got)
+	if got := mock.callCount(); got < 2 {
+		t.Errorf("made %d requests, want at least 2 (one failed round, one success)", got)
 	}
 }
 
@@ -437,11 +458,18 @@ func TestGeocodingFallsBackToOrganizerQuery(t *testing.T) {
 	})
 
 	queries := mock.recordedQueries()
-	if len(queries) != 1 {
-		t.Fatalf("recorded %d queries, want 1", len(queries))
+	if len(queries) == 0 {
+		t.Fatal("no query was sent")
 	}
-	if !strings.Contains(queries[0], "Karlsruhe") {
-		t.Errorf("query = %q, want it to contain the extracted city", queries[0])
+	var found bool
+	for _, q := range queries {
+		if strings.Contains(q, "Karlsruhe") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("queries = %v, want one to contain the extracted city", queries)
 	}
 }
 
@@ -479,7 +507,7 @@ func TestConcurrentGeocodingIsRaceFree(t *testing.T) {
 func TestBuildNominatimURL(t *testing.T) {
 	t.Setenv("TTF_NOMINATIM_URL", "https://nominatim.example.test/search.php")
 
-	raw, err := buildNominatimURL("Bad Homburg vor der Höhe")
+	raw, err := buildNominatimURL("Bad Homburg vor der Höhe", true)
 	if err != nil {
 		t.Fatalf("buildNominatimURL() error = %v", err)
 	}
@@ -488,14 +516,26 @@ func TestBuildNominatimURL(t *testing.T) {
 		t.Errorf("URL = %q, want the configured base", raw)
 	}
 	// Spaces and umlauts must be percent-encoded, not naively replaced.
-	for _, want := range []string{"format=jsonv2", "limit=3", "accept-language=de", "q=Bad+Homburg+vor+der+H%C3%B6he"} {
+	for _, want := range []string{"format=jsonv2", "limit=5", "addressdetails=1", "accept-language=de", "q=Bad+Homburg+vor+der+H%C3%B6he"} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("URL %q does not contain %q", raw, want)
 		}
 	}
 
+	if !strings.Contains(raw, "featureType=settlement") {
+		t.Errorf("URL %q does not restrict results to settlements", raw)
+	}
+
+	permissive, err := buildNominatimURL("Kleinort", false)
+	if err != nil {
+		t.Fatalf("buildNominatimURL(permissive) error = %v", err)
+	}
+	if strings.Contains(permissive, "featureType") {
+		t.Errorf("permissive URL %q should not restrict the feature type", permissive)
+	}
+
 	t.Setenv("TTF_NOMINATIM_URL", "://broken")
-	if _, err := buildNominatimURL("x"); err == nil {
+	if _, err := buildNominatimURL("x", true); err == nil {
 		t.Error("expected an error for an invalid base URL")
 	}
 }

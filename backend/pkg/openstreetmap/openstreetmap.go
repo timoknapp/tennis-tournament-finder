@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/timoknapp/tennis-tournament-finder/pkg/cache"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/clublocations"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/httpclient"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/placename"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/ratelimit"
 )
 
@@ -41,6 +43,15 @@ const maxGeocodingResponseBytes = 1 << 20 // 1 MiB
 // defaultNominatimInterval honours the Nominatim usage policy of at most one
 // request per second for the shared public instance.
 const defaultNominatimInterval = time.Second
+
+// maxGeocodeCandidates bounds how many place-name guesses are derived per
+// tournament.
+const maxGeocodeCandidates = 4
+
+// maxGeocodeRequests bounds the total upstream requests per tournament across
+// both lookup passes. Each request is rate limited, so this keeps the cost of
+// one tournament predictable.
+const maxGeocodeRequests = 6
 
 var (
 	geocodingLimiterOnce sync.Once
@@ -230,7 +241,19 @@ func generateOrganizerCacheKey(organizer, state string) string {
 }
 
 func GetGeocoordinatesFromCache(state string, tournament models.Tournament) models.Geocoordinates {
-	keys := geocodeCacheKeys(state, tournament)
+	return GetGeocoordinatesForFederation(models.Federation{State: state}, tournament)
+}
+
+// GetGeocoordinatesForFederation resolves a tournament's coordinates, accepting
+// results from any state the federation covers.
+func GetGeocoordinatesForFederation(fed models.Federation, tournament models.Tournament) models.Geocoordinates {
+	acceptedStates := fed.AcceptedStates()
+	primaryState := ""
+	if len(acceptedStates) > 0 {
+		primaryState = acceptedStates[0]
+	}
+
+	keys := geocodeCacheKeys(primaryState, tournament)
 
 	// Check every candidate key. A successful hit wins immediately.
 	//
@@ -266,7 +289,7 @@ func GetGeocoordinatesFromCache(state string, tournament models.Tournament) mode
 	logger.Debug("No Geocoordinate Cache entry found for (%s): '%s' at '%s'. Fetching data from server.",
 		tournament.Id, tournament.Organizer, tournament.Location)
 
-	return getGeocoordinates(state, tournament)
+	return getGeocoordinatesForStates(acceptedStates, tournament)
 }
 
 // shouldRetryGeocodingRequest determines if a failed geocoding request should be retried
@@ -427,300 +450,280 @@ func CleanupOldFailedEntries() int {
 	return cleaned
 }
 
-// extractCityFromOrganizerName intelligently extracts the city name from the organizer string
-func extractCityFromOrganizerName(organizer string) string {
-	// Handle special cases first
-	if cityFromSpecialCases := handleSpecialCases(organizer); cityFromSpecialCases != "" {
-		return cityFromSpecialCases
-	}
-
-	// Remove common prefixes and suffixes first
-	removeablePrefixesSuffixes := []string{
-		"e.V.", "e. V.", "e.v.",
-		", TA", " TA", "- TA", " , TA",
-		"Abt. Tennis", "- Abt. Tennis", "Abt.",
-		"von 1845", "von 1890", "1890", "1845", "1911", "1920", "1920/75", "1975", "1970", "1974", "1923", "1897", "1896", "08/29", "05", "50",
-		"zu",
-	}
-
-	// Remove common club type abbreviations and full names
-	removeableClubTypes := []string{
-		"Turnverein", "Turn- u. Sportverein", "Tennisverein", "Tennis-Club", "Tennisclub", "Tennisklub",
-		"Sportverein", "Sport-Verein", "Sportvereinigung", "Sportgemeinschaft", "Tennisgemeinschaft",
-		"Sport-Verein",
-		"TC", "TK", "TG", "TV", "SG", "SV", "SKV", "FC", "ATV", "SuS", "TSG", "SC", "SF", "TSC",
-		"Tennis", "DJK", "Post", "Tura", "Germania", "Bezirk", "Optimus", "Olympia", "Nicolai", "Club",
-	}
-
-	// Remove color combinations and specific club names
-	removeableColors := []string{
-		"Rot-Weiß", "Blau-Weiß", "Grün-Weiß", "Grün-Weiss", "Grün-Gelb", "Grün-Weiß-Rot",
-		"Blau-Gelb", "Schwarz-Weiß", "Grün Weiß", "Grün Weiss", "Weiss-Rot",
-		"GW", "BW", "RW", "SW",
-	}
-
-	query := organizer
-
-	// Remove all the unwanted parts
-	allRemovables := append(append(removeablePrefixesSuffixes, removeableClubTypes...), removeableColors...)
-	for _, removable := range allRemovables {
-		query = strings.ReplaceAll(query, removable, "")
-	}
-
-	// Clean up extra spaces and trim
-	query = strings.TrimSpace(strings.ReplaceAll(query, "  ", " "))
-
-	// Handle special cases and extract meaningful city names
-	cityName := extractCityFromPattern(query, organizer)
-
-	// Final fallback
-	if cityName == "" {
-		return organizer
-	}
-
-	return cityName
+// geocodeQuery describes one attempt to resolve a place.
+type geocodeQuery struct {
+	value  string // what to send to the geocoder
+	source string // where it came from, for logging
 }
 
-// handleSpecialCases handles specific known problematic cases
-func handleSpecialCases(organizer string) string {
-	// Handle "Post Südstadt Karlsruhe" type cases - prefer the main city
-	if strings.Contains(organizer, "Post Südstadt Karlsruhe") {
-		return "Karlsruhe"
-	}
-	if strings.Contains(organizer, "Heidelberger Tennis-Club") {
-		return "Heidelberg"
-	}
-	if strings.Contains(organizer, "Eppelheimer Tennis-Club") {
-		return "Eppelheim"
-	}
-	if strings.Contains(organizer, "Karbener Sportverein") {
-		return "Karben"
-	}
-	if strings.Contains(organizer, "Unterbarmer Tennisclub") {
-		return "Wuppertal" // Unterbarmen is a district of Wuppertal
-	}
-	if strings.Contains(organizer, "Ratinger Tennisclub") {
-		return "Ratingen"
-	}
-	if strings.Contains(organizer, "Lohausener Sport-Verein") {
-		return "Düsseldorf" // Lohausen is a district of Düsseldorf
+// buildGeocodeQueries returns the ordered list of place names to try for a
+// tournament.
+//
+// Order of precedence:
+//  1. a manual override for the organizer (highest confidence)
+//  2. the location published by the federation, when present
+//  3. candidates derived from the organizer's club name
+//
+// The caller stops at the first candidate that resolves inside an accepted
+// state, so more specific guesses must come first.
+func buildGeocodeQueries(tournament models.Tournament) ([]geocodeQuery, *clublocations.Override) {
+	var queries []geocodeQuery
+	seen := make(map[string]bool)
+
+	add := func(value, source string) {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[strings.ToLower(value)] {
+			return
+		}
+		seen[strings.ToLower(value)] = true
+		queries = append(queries, geocodeQuery{value: value, source: source})
 	}
 
-	// Handle adjective forms ending in -er
-	words := strings.Fields(organizer)
-	for _, word := range words {
-		if strings.HasSuffix(word, "er") && len(word) > 4 {
-			// Try different transformations for German adjective → city name
-			transformations := []string{
-				strings.TrimSuffix(word, "er"),        // Heidelberger → Heidelberg
-				strings.TrimSuffix(word, "er") + "en", // Ratinger → Ratingen
-				strings.TrimSuffix(word, "er") + "m",  // Eppelheimer → Eppelheim
-			}
-
-			for _, candidate := range transformations {
-				if isLikelyCityName(candidate) {
-					return candidate
-				}
+	var override *clublocations.Override
+	if table, err := clublocations.Default(); err == nil && tournament.Organizer != "" {
+		if o, ok := table.Lookup(tournament.Organizer); ok {
+			override = &o
+			if o.City != "" {
+				add(o.City, "override")
 			}
 		}
 	}
 
-	return ""
+	// The published location is usually a plain city name and is trusted
+	// before anything derived from the club name.
+	if loc := strings.TrimSpace(tournament.Location); loc != "" {
+		add(loc, "location")
+		for _, c := range placename.Candidates(loc) {
+			add(c, "location-derived")
+		}
+	}
+
+	for _, c := range placename.Candidates(tournament.Organizer) {
+		add(c, "organizer-derived")
+	}
+
+	if len(queries) > maxGeocodeCandidates {
+		queries = queries[:maxGeocodeCandidates]
+	}
+
+	return queries, override
 }
 
-// extractCityFromPattern uses various patterns to extract city names
-func extractCityFromPattern(cleanedQuery string, originalOrganizer string) string {
-	words := strings.Fields(cleanedQuery)
-	if len(words) == 0 {
-		return ""
+// matchesState reports whether a geocoding result belongs to one of the
+// accepted states.
+//
+// The structured address field is authoritative. DisplayName is only consulted
+// as a fallback for responses without address details.
+func matchesState(geo models.Geocoordinates, acceptedStates []string) bool {
+	if len(acceptedStates) == 0 {
+		return true // no restriction configured
 	}
 
-	// Pattern 1: Look for compound city names (German cities often have hyphens or are compound)
-	for _, word := range words {
-		if isLikelyCityName(word) {
-			return word
+	for _, state := range acceptedStates {
+		if state == "" {
+			continue
 		}
-	}
-
-	// Pattern 2: Extract from specific known patterns
-	if cityFromSpecialPattern := extractFromSpecialPatterns(originalOrganizer); cityFromSpecialPattern != "" {
-		return cityFromSpecialPattern
-	}
-
-	// Pattern 3: Look for the longest meaningful word that could be a city
-	var bestCandidate string
-	for _, word := range words {
-		if len(word) >= 4 && isCapitalized(word) && !isCommonClubWord(word) && len(word) > len(bestCandidate) {
-			bestCandidate = word
+		if geo.Address.State != "" {
+			if strings.EqualFold(geo.Address.State, state) {
+				return true
+			}
+			continue
 		}
-	}
-
-	if bestCandidate != "" {
-		return bestCandidate
-	}
-
-	// Pattern 4: Take the first meaningful word
-	for _, word := range words {
-		if len(word) >= 3 && isCapitalized(word) && !isCommonClubWord(word) {
-			return word
-		}
-	}
-
-	return ""
-}
-
-// isLikelyCityName checks if a word looks like a German city name
-func isLikelyCityName(word string) bool {
-	if len(word) < 3 || !isCapitalized(word) {
-		return false
-	}
-
-	// German city patterns
-	cityPatterns := []string{
-		"heim", "hausen", "feld", "berg", "burg", "furt", "stadt", "dorf", "bach", "tal", "au",
-		"weiler", "kirchen", "ingen", "ungen", "stein", "bronn", "brunn", "baden", "bad",
-	}
-
-	wordLower := strings.ToLower(word)
-	for _, pattern := range cityPatterns {
-		if strings.HasSuffix(wordLower, pattern) {
+		if strings.Contains(geo.DisplayName, state) {
 			return true
 		}
 	}
 
-	// Known city names that don't follow patterns
-	knownCities := []string{
-		"Leipzig", "Erfurt", "Pinnow", "Apolda", "Speyer", "Konstanz", "Lorsch", "Karlsruhe",
-		"Duisburg", "Wesel", "Dümpten", "Eigen", "Büderich", "Wixhausen", "Neckarau", "Denzlingen",
-		"Niederursel", "Blumberg", "Ratingen", "Büttelborn", "Ladenburg", "Offenthal", "Niefern",
-		"Öschelbronn", "Buchen", "Mönchengladbach", "Unterfeldhaus", "Friedrichsfeld", "Bermatingen",
-		"Mülheim", "Heißen", "Mörfelden", "Lußheim", "Großsachsen", "Wössingen", "Mühlhausen",
-		"Dauchingen", "Schriesheim", "Eppelheim", "Durmersheim", "Wiesental", "Grenzach", "Malsch",
-		"Eggenstein", "Mackenbach", "Dreieichenhain", "Mehrhoog", "Heidelberg", "Kassel", "Nordshausen",
-		"Karben", "Wuppertal", "Düsseldorf",
-	}
-
-	for _, city := range knownCities {
-		if strings.EqualFold(word, city) || strings.Contains(strings.ToLower(word), strings.ToLower(city)) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// extractFromSpecialPatterns handles specific naming patterns
-func extractFromSpecialPatterns(organizer string) string {
-	// Pattern: "City-Suffix" format
-	if strings.Contains(organizer, "-") {
-		parts := strings.Split(organizer, "-")
-		for _, part := range parts {
-			cleaned := strings.TrimSpace(part)
-			if isLikelyCityName(cleaned) {
-				return cleaned
-			}
-		}
-	}
-
-	// Pattern: "Prefix City" format
-	parts := strings.Fields(organizer)
-	if len(parts) >= 2 {
-		for i, part := range parts {
-			if isLikelyCityName(part) {
-				return part
-			}
-			// Check compound words
-			if i < len(parts)-1 {
-				compound := part + parts[i+1]
-				if isLikelyCityName(compound) {
-					return compound
-				}
-			}
-		}
-	}
-
-	return ""
-} // Helper functions
-func isNumeric(s string) bool {
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func isCapitalized(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	first := rune(s[0])
-	return first >= 'A' && first <= 'Z'
-}
-
-func isCommonClubWord(word string) bool {
-	commonWords := []string{
-		"Tennis", "Club", "Verein", "Sport", "Turn", "Klub", "Gemeinschaft", "Sportverein",
-		"Tennisverein", "Sportgemeinschaft", "Tennisgemeinschaft", "Turnverein", "Sportvereinigung",
-		"Optimus", "Olympia", "Germania", "Nicolai", "Post", "Tura", "Bezirk", "Karbener",
-		"Heidelberger", "Ratinger", "Lohausener", "Unterbarmer", "Eppelheimer",
-		"Südstadt", // District names that aren't the main city
-	}
-	for _, common := range commonWords {
-		if strings.EqualFold(word, common) {
-			return true
-		}
-	}
 	return false
 }
 
 func getGeocoordinates(state string, tournament models.Tournament) models.Geocoordinates {
-	// 1. Get Coordinates by tournament.Location if it exists
-	// 2. Get Coordinates by tournament.Organizer if this does not work out
-	// 3. Let the caller fall back to the federation default coordinates
-	var tournamentId string = tournament.Id
-	var tournamentOrganizer string = tournament.Organizer
+	return getGeocoordinatesForStates([]string{state}, tournament)
+}
 
-	var query string
-	if len(strings.TrimSpace(tournament.Location)) > 0 {
-		query = tournament.Location
-	} else {
-		query = extractCityFromOrganizerName(tournamentOrganizer)
+// getGeocoordinatesForStates resolves a tournament's coordinates, trying each
+// candidate place name until one resolves inside an accepted state.
+func getGeocoordinatesForStates(acceptedStates []string, tournament models.Tournament) models.Geocoordinates {
+	primaryState := ""
+	if len(acceptedStates) > 0 {
+		primaryState = acceptedStates[0]
 	}
 
-	query = strings.TrimSpace(query)
-	if query == "" {
-		logger.Warn("Empty geocoding query for tournament %s; skipping request", tournamentId)
-		saveFailedGeocodingAttempt(state, tournament)
+	queries, override := buildGeocodeQueries(tournament)
+
+	// An override may pin coordinates directly, which skips the network.
+	if override != nil && override.HasCoordinates() {
+		result := models.Geocoordinates{
+			Lat:         override.Lat,
+			Lon:         override.Lon,
+			DisplayName: override.City,
+		}
+		logger.Debug("Using pinned override coordinates for tournament %s (%s)",
+			tournament.Id, tournament.Organizer)
+		saveGeocoordinatesInCache(tournament, primaryState, result)
+		return result
+	}
+
+	if override != nil && override.State != "" {
+		// An override may also correct the expected state.
+		acceptedStates = append([]string{override.State}, acceptedStates...)
+	}
+
+	if len(queries) == 0 {
+		logger.Warn("No geocoding candidates for tournament %s (organizer %q, location %q)",
+			tournament.Id, tournament.Organizer, tournament.Location)
+		saveFailedGeocodingAttempt(primaryState, tournament)
 		return models.Geocoordinates{}
 	}
 
-	// Previous failure count drives the progressive backoff.
-	previousFailCount := previousFailCountFor(state, tournament)
+	previousFailCount := previousFailCountFor(primaryState, tournament)
 
 	ctx, cancel := context.WithTimeout(context.Background(), httpclient.DefaultTimeout)
 	defer cancel()
 
+	var lastErr error
+	// A result that matches the state but not the queried name exactly is kept
+	// as a fallback while better candidates are tried. Without this, a query
+	// like "Bremer" happily settles for the hamlet "Bremer Sand" instead of
+	// reaching the city of Bremen via the de-adjectived candidate.
+	var fallback *models.Geocoordinates
+	var fallbackQuery geocodeQuery
+
+	// Each request is rate limited, so the total number of upstream calls per
+	// tournament is capped regardless of how many candidates or passes exist.
+	budget := maxGeocodeRequests
+
+	// Two passes. The first restricts results to settlements, which is what a
+	// map pin should point at. Only if nothing resolves at all do we allow
+	// arbitrary features, so a club in a tiny hamlet still gets a location
+	// rather than the federation's default.
+passes:
+	for _, settlementsOnly := range []bool{true, false} {
+		for _, q := range queries {
+			if budget <= 0 {
+				break passes
+			}
+			budget--
+
+			results, err := queryNominatim(ctx, q.value, tournament.Id, settlementsOnly)
+			if err != nil {
+				lastErr = err
+				// A transport-level failure affects every candidate equally.
+				break passes
+			}
+
+			for _, candidate := range results {
+				if !matchesState(candidate, acceptedStates) {
+					continue
+				}
+
+				result := candidate
+				result.IsFailed = false
+				result.FailCount = 0
+				result.LastAttempt = 0
+
+				if placeMatchesQuery(result, q.value) {
+					logger.Debug("Geocoded tournament %s via %s query %q (settlements=%v) -> %s",
+						tournament.Id, q.source, q.value, settlementsOnly, result.DisplayName)
+					saveGeocoordinatesInCache(tournament, primaryState, result)
+					return result
+				}
+
+				if fallback == nil {
+					kept := result
+					fallback = &kept
+					fallbackQuery = q
+				}
+			}
+		}
+	}
+
+	// No exact name match anywhere: use the best inexact hit rather than
+	// falling back to the federation's default coordinates.
+	if fallback != nil {
+		logger.Debug("Geocoded tournament %s via %s query %q (inexact) -> %s",
+			tournament.Id, fallbackQuery.source, fallbackQuery.value, fallback.DisplayName)
+		saveGeocoordinatesInCache(tournament, primaryState, *fallback)
+		return *fallback
+	}
+
+	if lastErr != nil {
+		logger.Error("Geocoding failed for tournament %s: %v", tournament.Id, lastErr)
+	} else {
+		logger.Warn("No suitable geocoordinates for tournament %s (organizer %q) in %v; tried %d candidates",
+			tournament.Id, tournament.Organizer, acceptedStates, len(queries))
+	}
+
+	saveFailedGeocodingAttemptWithCount(primaryState, tournament, previousFailCount)
+	return models.Geocoordinates{}
+}
+
+// placeMatchesQuery reports whether a geocoding result actually names the
+// place that was asked for, rather than merely containing it.
+//
+// Nominatim readily returns "Bremer Sand" for "Bremer" or "Ratinger Straße"
+// for "Ratinger". Accepting those produces a pin in the wrong town.
+func placeMatchesQuery(geo models.Geocoordinates, query string) bool {
+	place := geo.Address.Place()
+	if place == "" {
+		return false
+	}
+
+	normPlace := normalizePlaceName(place)
+	normQuery := normalizePlaceName(query)
+	if normPlace == "" || normQuery == "" {
+		return false
+	}
+
+	if normPlace == normQuery {
+		return true
+	}
+
+	// Accept official long forms of the same place: "Bad Homburg" ->
+	// "Bad Homburg vor der Höhe", "Frankfurt" -> "Frankfurt am Main".
+	//
+	// Such suffixes are geographic qualifiers that begin with a lowercase
+	// preposition. Requiring that is what keeps "Bremer" from matching the
+	// hamlet "Bremer Sand", whose suffix is a capitalized noun.
+	rest, ok := strings.CutPrefix(normPlace, normQuery+" ")
+	if !ok {
+		return false
+	}
+
+	first, _, _ := strings.Cut(rest, " ")
+	return placeQualifiers[first]
+}
+
+// placeQualifiers introduce the geographic suffix of an official German place
+// name ("Frankfurt am Main", "Bad Homburg vor der Höhe").
+var placeQualifiers = map[string]bool{
+	"am": true, "an": true, "im": true, "in": true, "vor": true,
+	"bei": true, "auf": true, "ob": true, "unter": true, "a": true,
+	"i": true, "v": true,
+}
+
+// normalizePlaceName lowercases and collapses whitespace for comparison.
+func normalizePlaceName(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+}
+
+// queryNominatim performs one geocoding request and returns the parsed results.
+func queryNominatim(ctx context.Context, query, tournamentId string, settlementsOnly bool) ([]models.Geocoordinates, error) {
 	// Honour the Nominatim usage policy: at most one request per second.
 	// Cache hits never reach this point, so cached lookups do not consume
 	// rate-limit capacity.
 	if err := geocodingRateLimiter().Wait(ctx); err != nil {
-		logger.Error("Geocoding rate limiter aborted for tournament %s: %v", tournamentId, err)
-		return models.Geocoordinates{}
+		return nil, fmt.Errorf("rate limiter aborted: %w", err)
 	}
 
-	reqURL, err := buildNominatimURL(query)
+	reqURL, err := buildNominatimURL(query, settlementsOnly)
 	if err != nil {
-		logger.Error("Failed to build geocoding URL for tournament %s: %v", tournamentId, err)
-		saveFailedGeocodingAttemptWithCount(state, tournament, previousFailCount)
-		return models.Geocoordinates{}
+		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		logger.Error("Failed to create geocoding request for tournament %s: %v", tournamentId, err)
-		saveFailedGeocodingAttemptWithCount(state, tournament, previousFailCount)
-		return models.Geocoordinates{}
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	// Nominatim requires an identifying User-Agent.
 	httpclient.ApplyDefaultHeaders(req)
@@ -728,9 +731,7 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 
 	res, err := httpclient.Geocoding().Do(req)
 	if err != nil {
-		logger.Error("HTTP error for tournament %s: %v", tournamentId, err)
-		saveFailedGeocodingAttemptWithCount(state, tournament, previousFailCount)
-		return models.Geocoordinates{}
+		return nil, err
 	}
 	defer res.Body.Close()
 
@@ -738,59 +739,47 @@ func getGeocoordinates(state string, tournament models.Tournament) models.Geocoo
 		if retryAfter := res.Header.Get("Retry-After"); retryAfter != "" {
 			logger.Warn("Geocoding throttled for tournament %s: status %d, Retry-After: %s",
 				tournamentId, res.StatusCode, retryAfter)
-		} else {
-			logger.Error("Geocoding failed for tournament %s: unexpected status %d", tournamentId, res.StatusCode)
 		}
-		// Drain a bounded amount so the connection can be reused.
 		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, maxGeocodingResponseBytes))
-		saveFailedGeocodingAttemptWithCount(state, tournament, previousFailCount)
-		return models.Geocoordinates{}
+		return nil, fmt.Errorf("unexpected status %d", res.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxGeocodingResponseBytes))
 	if err != nil {
-		logger.Error("Read error for tournament %s: %v", tournamentId, err)
-		saveFailedGeocodingAttemptWithCount(state, tournament, previousFailCount)
-		return models.Geocoordinates{}
+		return nil, fmt.Errorf("read error: %w", err)
 	}
 
 	var geoCoords []models.Geocoordinates
 	if err := json.Unmarshal(body, &geoCoords); err != nil {
-		logger.Error("Failed to decode geocoding response for tournament %s: %v", tournamentId, err)
-		saveFailedGeocodingAttemptWithCount(state, tournament, previousFailCount)
-		return models.Geocoordinates{}
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Check if coordinates belong to the correct state (region).
-	for i := 0; i < len(geoCoords); i++ {
-		if strings.Contains(geoCoords[i].DisplayName, state) {
-			result := geoCoords[i]
-			// Reset failure tracking on success
-			result.IsFailed = false
-			result.FailCount = 0
-			result.LastAttempt = 0
-			saveGeocoordinatesInCache(tournament, state, result)
-			return result
-		}
-	}
-
-	// No suitable coordinates found - cache this as a failed attempt
-	logger.Warn("No suitable geocoordinates found for tournament %s in state %s", tournamentId, state)
-	saveFailedGeocodingAttemptWithCount(state, tournament, previousFailCount)
-	return models.Geocoordinates{}
+	return geoCoords, nil
 }
 
 // buildNominatimURL assembles the geocoding request URL with proper encoding.
-func buildNominatimURL(query string) (string, error) {
+//
+// When settlementsOnly is set, Nominatim is restricted to cities, towns,
+// villages and hamlets. Without that restriction a query like "Ratinger"
+// happily matches "Ratinger Straße" in a completely different city, which is a
+// major source of wrong map pins.
+func buildNominatimURL(query string, settlementsOnly bool) (string, error) {
 	u, err := url.Parse(nominatimBaseURL())
 	if err != nil {
 		return "", fmt.Errorf("invalid Nominatim base URL: %w", err)
 	}
 
 	q := u.Query()
-	q.Set("limit", "3")
+	q.Set("limit", "5")
 	q.Set("accept-language", "de")
 	q.Set("format", "jsonv2")
+	// Structured address details let us verify the state reliably instead of
+	// substring-matching the display name.
+	q.Set("addressdetails", "1")
+	q.Set("countrycodes", "de")
+	if settlementsOnly {
+		q.Set("featureType", "settlement")
+	}
 	q.Set("q", query)
 	u.RawQuery = q.Encode()
 
