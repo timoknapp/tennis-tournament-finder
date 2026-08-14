@@ -226,6 +226,7 @@ func newState() *metricsState {
 		active:          make(map[string]time.Time),
 	}
 }
+
 type statusWriter struct {
 	http.ResponseWriter
 	status int

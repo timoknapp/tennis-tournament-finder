@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<!--
+  Fixture: old (liga.nu) tournament calendar response.
+
+  Sanitized and reduced by hand from a real federation response. It covers:
+    - the header row that must be skipped
+    - a tournament whose first row carries rowspan on the date/title cells
+    - continuation rows that add further competitions to the previous tournament
+    - a "&nbsp;" placeholder in the LK column
+    - an organizer separated from the tournament link by markup/whitespace
+    - a tournament without a parsable ID (link without "detail/")
+-->
+<html lang="de">
+<head><meta charset="utf-8"><title>Turnierkalender</title></head>
+<body>
+<table class="result-set">
+  <tr>
+    <th>Datum</th>
+    <th>Turnier</th>
+    <th>Konkurrenz</th>
+    <th>LK</th>
+  </tr>
+
+  <tr>
+    <td rowspan="3">01.08.2026 - 03.08.2026</td>
+    <td rowspan="3">
+      <a href="https://www.tennis.de/spielen/turniersuche.html#detail/700001">LK-Turnier Sommer Open</a>
+      <br/>
+      TC Rot-Weiß   Karlsruhe
+    </td>
+    <td>Herren Einzel</td>
+    <td>LK 12,0</td>
+  </tr>
+  <tr>
+    <td>Damen Einzel</td>
+    <td>LK 14,5</td>
+  </tr>
+  <tr>
+    <td>Herren Doppel</td>
+    <td>&nbsp;</td>
+  </tr>
+
+  <tr>
+    <td rowspan="1">10.08.2026</td>
+    <td rowspan="1">
+      <a href="https://www.tennis.de/spielen/turniersuche.html#detail/700002">Jugendturnier
+        Heidelberg</a>
+      TC Heidelberg
+    </td>
+    <td>Jugend Einzel</td>
+    <td>LK 20,0</td>
+  </tr>
+
+  <tr>
+    <td rowspan="1">15.08.2026</td>
+    <td rowspan="1">
+      <a href="https://example.invalid/turnier/ohne-id">Turnier ohne ID</a>
+      TC Ohne Kennung
+    </td>
+    <td>Senioren Einzel</td>
+    <td>LK 18,0</td>
+  </tr>
+</table>
+</body>
+</html>

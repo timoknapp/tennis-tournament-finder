@@ -65,9 +65,9 @@ func (s *Scheduler) Stop() {
 func (s *Scheduler) Reload() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	newConfig := FromEnv()
-	
+
 	// If configuration hasn't changed, no need to restart
 	if s.config.CronSpec == newConfig.CronSpec &&
 		s.config.CompType == newConfig.CompType &&
@@ -76,15 +76,15 @@ func (s *Scheduler) Reload() error {
 		logger.Info("Scheduler configuration unchanged, no restart needed")
 		return nil
 	}
-	
+
 	// Keep backup of old cron and config in case reload fails
 	oldCron := s.c
 	oldConfig := s.config
-	
+
 	// Stop current scheduler
 	oldCron.Stop()
 	logger.Info("Stopped scheduler for configuration reload")
-	
+
 	// Create new cron scheduler with updated config only if enabled
 	if newConfig.Enabled {
 		newCron := cron.New()
@@ -104,7 +104,7 @@ func (s *Scheduler) Reload() error {
 		newCron.Start()
 		logger.Info("Scheduler restarted with new configuration (cron=%s, compType=%s, federations=%s)",
 			newConfig.CronSpec, newConfig.CompType, newConfig.Federations)
-		
+
 		// Update to new configuration
 		s.c = newCron
 		s.config = newConfig
@@ -114,7 +114,7 @@ func (s *Scheduler) Reload() error {
 		s.config = newConfig
 		logger.Info("Scheduler disabled via configuration reload")
 	}
-	
+
 	return nil
 }
 

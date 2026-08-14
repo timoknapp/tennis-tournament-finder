@@ -11,8 +11,70 @@ on:
 
 name: Build Tennis Backend
 jobs:
+  test:
+    name: Test & Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify formatting
+        run: |
+          cd backend
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Verify go.mod is tidy
+        run: |
+          cd backend
+          cp go.mod go.mod.bak
+          cp go.sum go.sum.bak
+          go mod tidy
+          if ! diff -q go.mod go.mod.bak >/dev/null || ! diff -q go.sum go.sum.bak >/dev/null; then
+            echo "::error::go.mod/go.sum are not tidy. Run 'go mod tidy' in ./backend."
+            diff -u go.mod.bak go.mod || true
+            diff -u go.sum.bak go.sum || true
+            exit 1
+          fi
+          rm -f go.mod.bak go.sum.bak
+
+      - name: Vet
+        run: |
+          cd backend
+          go vet ./...
+
+      # The tests mock every external dependency (federation sites and
+      # Nominatim) with httptest servers, so no network access is required.
+      - name: Test with race detector
+        run: |
+          cd backend
+          go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: |
+          cd backend
+          go tool cover -func=coverage.out | tail -n 20
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.out
+          if-no-files-found: warn
+
   build:
     name: Build & Deploy
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -22,7 +84,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.23" # The Go version to download (if necessary) and use.
-      
+          cache-dependency-path: backend/go.sum
+
       - name: Build
         run: |
           cd backend
@@ -30,7 +93,7 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o tennis-tournament-finder-backend cmd/main.go
           pwd
           ls -la
-      
+
       - name: Deploy
         uses: appleboy/scp-action@v0.1.7
         if: github.event_name != 'pull_request'
