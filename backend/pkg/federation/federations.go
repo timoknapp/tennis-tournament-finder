@@ -85,6 +85,66 @@ func GetFederations() []models.Federation {
 			ApiVersion:        "new",
 			TrustedProperties: "{\"tournamentsFilter\":{\"ageCategory\":1,\"ageGroupJuniors\":1,\"ageGroupSeniors\":1,\"circuit\":1,\"fedRankValuation\":1,\"nationalValuation\":1,\"type\":1,\"fedRank\":1,\"region\":1,\"name\":1,\"city\":1,\"startDate\":1,\"endDate\":1,\"firstResult\":1,\"maxResults\":1}}159ecd19ddd43b30fbc8e35aea82f7bf7373a592",
 		},
+		{
+			Id:             "TVBB",
+			Url:            "https://tvbb.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar",
+			Name:           "Tennis-Verband Berlin-Brandenburg",
+			Geocoordinates: models.Geocoordinates{Lat: "52.5170365", Lon: "13.3888599"},
+			// The federation covers both Berlin and Brandenburg; accepting
+			// only one would push every tournament in the other state onto
+			// the default marker.
+			State:             "Berlin",
+			States:            []string{"Berlin", "Brandenburg"},
+			ApiVersion:        "old",
+			TrustedProperties: "",
+		},
+		{
+			Id:                "HAM",
+			Url:               "https://hamburg.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar",
+			Name:              "Hamburger Tennisverband",
+			Geocoordinates:    models.Geocoordinates{Lat: "53.550341", Lon: "10.000654"},
+			State:             "Hamburg",
+			ApiVersion:        "old",
+			TrustedProperties: "",
+		},
+		{
+			Id:                "TVM",
+			Url:               "https://tvm.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar",
+			Name:              "Tennisverband Mittelrhein",
+			Geocoordinates:    models.Geocoordinates{Lat: "50.9412538", Lon: "6.9582814"},
+			State:             "Nordrhein-Westfalen",
+			ApiVersion:        "old",
+			TrustedProperties: "",
+		},
+		{
+			Id:             "TNB",
+			Url:            "https://tnb.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar",
+			Name:           "Tennisverband Niedersachsen-Bremen",
+			Geocoordinates: models.Geocoordinates{Lat: "52.3758916", Lon: "9.7320104"},
+			// Covers Niedersachsen and the city state of Bremen.
+			State:             "Niedersachsen",
+			States:            []string{"Niedersachsen", "Bremen"},
+			ApiVersion:        "old",
+			TrustedProperties: "",
+		},
+		{
+			Id:                "STB",
+			Url:               "https://stb.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar",
+			Name:              "Saarländischer Tennisbund",
+			Geocoordinates:    models.Geocoordinates{Lat: "49.2401572", Lon: "6.9969327"},
+			State:             "Saarland",
+			ApiVersion:        "old",
+			TrustedProperties: "",
+		},
+		{
+			Id:                "WTV",
+			Url:               "https://wtv.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar",
+			Name:              "Westfälischer Tennis-Verband",
+			Geocoordinates:    models.Geocoordinates{Lat: "51.5142273", Lon: "7.4652789"},
+			State:             "Nordrhein-Westfalen",
+			ApiVersion:        "old",
+			TrustedProperties: "",
+		},
 	}
 	return federations
 }
