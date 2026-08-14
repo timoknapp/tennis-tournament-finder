@@ -204,6 +204,23 @@ If a tournament shows up in the wrong place, add an entry to
 
 A different file can be supplied with `TTF_CLUB_LOCATIONS`.
 
+#### Finding wrong pins
+
+`cmd/pincheck` lists tournaments that fell back to their federation's default
+coordinates, which is what produces a stack of unrelated tournaments on one
+marker. Those are the pins worth fixing:
+
+```bash
+cd backend
+go run ./cmd/pincheck -days 30            # report fallback pins
+go run ./cmd/pincheck -days 30 -json      # emit override stubs to paste
+```
+
+Note that venue-exact addresses are **not** available from the upstream
+sources: tennis.de requires a login for tournament details (see issue #55), and
+nuLiga does not expose club addresses. Overrides are therefore the supported
+way to correct a location.
+
 #### Measuring accuracy
 
 `cmd/geobench` resolves a benchmark set of real club names against a live
