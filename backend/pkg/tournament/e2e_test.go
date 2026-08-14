@@ -559,6 +559,17 @@ func TestEndToEndGeocodingResultsAreCached(t *testing.T) {
 		Geocoordinates: models.Geocoordinates{Lat: "49.0", Lon: "8.4"},
 	}
 
+	// Resolve once to populate the cache. The first run may issue several
+	// candidate lookups before one resolves.
+	if _, results := tournament.CollectTournaments(
+		context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", ""); results[0].Err != nil {
+		t.Fatalf("warmup run error: %v", results[0].Err)
+	}
+	afterFirst := atomic.LoadInt64(geoCalls)
+	if afterFirst == 0 {
+		t.Fatal("no geocoding request was made on the first run")
+	}
+
 	for i := 0; i < 3; i++ {
 		if _, results := tournament.CollectTournaments(
 			context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", ""); results[0].Err != nil {
@@ -566,10 +577,11 @@ func TestEndToEndGeocodingResultsAreCached(t *testing.T) {
 		}
 	}
 
-	// The same organizer/location must only be geocoded once; cache hits must
-	// not consume upstream rate-limit capacity.
-	if got := atomic.LoadInt64(geoCalls); got != 1 {
-		t.Errorf("made %d geocoding requests across 3 runs, want 1", got)
+	// The same organizer/location must be served from the cache afterwards;
+	// cache hits must not consume upstream rate-limit capacity.
+	if got := atomic.LoadInt64(geoCalls); got != afterFirst {
+		t.Errorf("made %d geocoding requests, want %d (repeat runs served from cache)",
+			got, afterFirst)
 	}
 }
 

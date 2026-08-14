@@ -274,10 +274,17 @@ function setupFederationLimits() {
         });
     });
 
-    // Initialize with the first N federations selected
-    checkboxes.forEach((checkbox, index) => {
-        checkbox.checked = index < MAX_SELECTED_FEDERATIONS;
-    });
+    // Respect the pre-selection from the markup, but never exceed the limit.
+    // Falling back to "the first N checkboxes" would silently change which
+    // federations are queried whenever the list order changes.
+    const preselected = Array.from(checkboxes).filter(cb => cb.checked);
+    if (preselected.length === 0 || preselected.length > MAX_SELECTED_FEDERATIONS) {
+        const keep = (preselected.length ? preselected : Array.from(checkboxes))
+            .slice(0, MAX_SELECTED_FEDERATIONS);
+        checkboxes.forEach(cb => {
+            cb.checked = keep.includes(cb);
+        });
+    }
     updateFederationSelectionState();
 }
 

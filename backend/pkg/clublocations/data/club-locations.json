@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "Manual location overrides for clubs whose venue cannot be derived from",
+    "their name. Entries here take precedence over the automatic city",
+    "extraction, so this file is the place to fix a wrong map pin without",
+    "touching any code.",
+    "",
+    "Matching is case-insensitive and ignores punctuation and extra spaces.",
+    "'match' is compared against the organizer string exactly (after that",
+    "normalization); 'contains' matches when the organizer contains it.",
+    "Exact matches win over 'contains' matches; among 'contains' matches the",
+    "longest pattern wins, so a specific entry beats a generic one.",
+    "",
+    "Provide either 'city' (geocoded like any other place name, preferred) or",
+    "explicit 'lat'/'lon' when even the city is ambiguous.",
+    "'state' is optional and restricts the geocoding result."
+  ],
+  "overrides": [
+    {
+      "match": "Lohausener Sport-Verein",
+      "city": "Düsseldorf",
+      "state": "Nordrhein-Westfalen",
+      "note": "Lohausen is a district of Düsseldorf; not derivable from the name."
+    },
+    {
+      "contains": "Unterbarmer",
+      "city": "Wuppertal",
+      "state": "Nordrhein-Westfalen",
+      "note": "Unterbarmen is a district of Wuppertal."
+    },
+    {
+      "contains": "Post Südstadt Karlsruhe",
+      "city": "Karlsruhe",
+      "state": "Baden-Württemberg",
+      "note": "Südstadt is a district; the main city is the useful pin."
+    },
+    {
+      "contains": "Frankfurt-Höchst",
+      "city": "Frankfurt am Main",
+      "state": "Hessen",
+      "note": "Höchst is a district of Frankfurt am Main."
+    },
+    {
+      "contains": "Mannheim-Neckarau",
+      "city": "Mannheim",
+      "state": "Baden-Württemberg",
+      "note": "Neckarau is a district of Mannheim."
+    }
+  ]
+}

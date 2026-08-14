@@ -36,11 +36,11 @@ const (
 
 // geocoder resolves tournament coordinates. The indirection lets tests supply a
 // deterministic implementation instead of performing network lookups.
-type geocoder func(state string, tournament models.Tournament) models.Geocoordinates
+type geocoder func(fed models.Federation, tournament models.Tournament) models.Geocoordinates
 
 // defaultGeocoder delegates to the OpenStreetMap cache/lookup.
-func defaultGeocoder(state string, tournament models.Tournament) models.Geocoordinates {
-	return openstreetmap.GetGeocoordinatesFromCache(state, tournament)
+func defaultGeocoder(fed models.Federation, tournament models.Tournament) models.Geocoordinates {
+	return openstreetmap.GetGeocoordinatesForFederation(fed, tournament)
 }
 
 // FederationResult carries a single federation's outcome.
@@ -378,7 +378,7 @@ func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, 
 		geocode = defaultGeocoder
 	}
 
-	geoCoords := geocode(fed.State, tournament)
+	geoCoords := geocode(fed, tournament)
 	if geoCoords.Lat == "" || geoCoords.Lon == "" {
 		logger.Warn("No Geocoordinates could be found for (%s): '%s'. Falling back to default in '%s'",
 			tournament.Id, subject, fed.State)

@@ -38,14 +38,14 @@ var testFederationRLP = models.Federation{
 // staticGeocoder returns fixed coordinates so parser tests never touch the
 // network and stay deterministic.
 func staticGeocoder(lat, lon string) geocoder {
-	return func(state string, tournament models.Tournament) models.Geocoordinates {
-		return models.Geocoordinates{Lat: lat, Lon: lon, DisplayName: state}
+	return func(fed models.Federation, tournament models.Tournament) models.Geocoordinates {
+		return models.Geocoordinates{Lat: lat, Lon: lon, DisplayName: fed.State}
 	}
 }
 
 // failingGeocoder simulates a lookup that cannot resolve coordinates.
 func failingGeocoder() geocoder {
-	return func(string, models.Tournament) models.Geocoordinates {
+	return func(models.Federation, models.Tournament) models.Geocoordinates {
 		return models.Geocoordinates{}
 	}
 }
