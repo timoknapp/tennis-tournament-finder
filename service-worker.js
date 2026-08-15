@@ -55,8 +55,15 @@
      *  Triggers when new SW is installed
      */
     self.addEventListener('install', event => {
-      // Don't skip waiting automatically - wait for user consent
-      console.log('Service Worker installing...');
+      // Previously this waited for the page to ask, which only worked if the
+      // page already running was new enough to ask. After a deploy the browser
+      // still runs the *previous* build, so a change to the update logic could
+      // never deliver itself: the old page just showed its dialog and the new
+      // worker sat in "waiting" forever if the user did not answer it.
+      //
+      // Activating here removes that dependency. There is no unsaved work in a
+      // tournament finder to protect with a prompt.
+      self.skipWaiting();
     });
 
     /**
