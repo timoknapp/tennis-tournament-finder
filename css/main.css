@@ -1457,3 +1457,62 @@ body {
         padding: 12px 14px;
     }
 }
+
+/* ---------- Panel scrolling ----------
+
+   The filter panel is taller than the screen, so it scrolls vertically. It
+   used overflow: auto, which enables scrolling on *both* axes: any child that
+   computes even a fraction of a pixel wider than the content box makes the
+   whole panel draggable sideways. On the map that reads as a broken layout,
+   because the labels slide out from under the card edge.
+
+   Vertical scrolling is intentional here; horizontal never is. */
+
+.filter {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* Long organiser names and unbroken URLs are the usual cause of a child
+   growing past its parent. */
+.filterContainer,
+.filterElement,
+.federationCheckboxes {
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* Inputs default to a size attribute-based width that ignores the container,
+   which is what pushes the rows wider than the panel. */
+.filter input,
+.filter select,
+.filter button {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    .filter {
+        /* Keep momentum scrolling on iOS while the axis stays locked. */
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+    }
+
+    /* Free-flowing chips leave a ragged gap on the right, which reads as a
+       broken margin next to the neatly aligned inputs above. A grid divides
+       the width evenly instead, so the block ends flush on both sides at any
+       screen size. */
+    .federationCheckboxes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .checkboxLabel {
+        width: 100%;
+        justify-content: center;
+        box-sizing: border-box;
+        padding: 10px 4px;
+    }
+}

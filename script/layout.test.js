@@ -174,6 +174,44 @@ const VIEWPORTS = [
             assert.strictEqual(open.overflowX, 0, `horizontal overflow of ${open.overflowX}px`);
         });
 
+        const panel = await page.evaluate(() => {
+            const el = document.getElementById('filterContainer');
+            const cs = getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            const innerLeft = rect.left + parseFloat(cs.paddingLeft);
+            const innerRight = rect.right - parseFloat(cs.paddingRight);
+            const chips = [...document.querySelectorAll('.checkboxLabel')];
+            const label = document.querySelector('#filterContainer label').getBoundingClientRect();
+            return {
+                overflowX: el.scrollWidth - el.clientWidth,
+                overflowXStyle: cs.overflowX,
+                labelInset: Math.round(label.left - innerLeft),
+                chipLeft: Math.round(Math.min(...chips.map(c => c.getBoundingClientRect().left)) - innerLeft),
+                chipRight: Math.round(innerRight - Math.max(...chips.map(c => c.getBoundingClientRect().right))),
+            };
+        });
+
+        check('panel itself does not scroll sideways', () => {
+            // The panel scrolls vertically by design. overflow: auto enables
+            // both axes, so a child even a fraction wider than the content box
+            // makes the card draggable sideways and slides the labels out of
+            // view.
+            assert.strictEqual(panel.overflowXStyle, 'hidden',
+                `overflow-x is ${panel.overflowXStyle}, must be hidden`);
+            assert.strictEqual(panel.overflowX, 0,
+                `panel content overflows by ${panel.overflowX}px`);
+        });
+
+        check('labels are not clipped at the panel edge', () => {
+            assert.ok(panel.labelInset >= -1,
+                `label starts ${panel.labelInset}px inside the padding box`);
+        });
+
+        check('chips end flush on both sides', () => {
+            assert.ok(Math.abs(panel.chipLeft - panel.chipRight) <= 4,
+                `chip row inset left ${panel.chipLeft}px vs right ${panel.chipRight}px`);
+        });
+
         await page.close();
     }
 
