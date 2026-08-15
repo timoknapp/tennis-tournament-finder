@@ -45,6 +45,18 @@
       "city": "Mannheim",
       "state": "Baden-Württemberg",
       "note": "Neckarau is a district of Mannheim."
+    },
+    {
+      "contains": "TC Freiberg",
+      "city": "Freiberg am Neckar",
+      "state": "Baden-Württemberg",
+      "note": "Several places are called Freiberg; the WTB one is Freiberg am Neckar, while the plain name resolves to Freiberg in Sachsen."
+    },
+    {
+      "contains": "Tennisclub Rot 1971",
+      "city": "Sankt Leon-Rot",
+      "state": "Baden-Württemberg",
+      "note": "The club name carries the district 'Rot' only; the municipality is Sankt Leon-Rot, so nothing usable can be derived from the name."
     }
   ]
 }

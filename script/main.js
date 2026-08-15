@@ -106,6 +106,14 @@ function registerMapFilterAutoClose() {
 // Remove automatic initial request - user must manually submit
 // getTournamentsByDate(initDateFrom, initDateTo, "", getSelectedFederations());
 
+// Tournaments from the most recent search, shared by the map and list views so
+// both always show the same data.
+let currentTournaments = [];
+// Marker instances keyed by tournament id, so the list can open the matching
+// popup on the map.
+let markerById = new Map();
+let currentView = 'map';
+
 function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
     if (dateFrom != "" && dateTo != "") {
         dateFrom = formatDateToAPI(dateFrom);
@@ -114,6 +122,9 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
         .then(response => {
             const tournaments = response.tournaments || [];
             renderDataNotice(response, tournaments.length);
+
+            currentTournaments = tournaments;
+            markerById = new Map();
 
             map.removeLayer(markers);
             markers = createMarkerClusterGroup();
@@ -158,8 +169,12 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
                 ${competitionDetails}
                 `)
                 markers.addLayer(marker);
+                if (tournament["id"]) {
+                    markerById.set(String(tournament["id"]), marker);
+                }
             }
             map.addLayer(markers);
+            renderTournamentList();
         });
     }
 }
@@ -381,4 +396,222 @@ function attachFilterAutoCloseToMarkers(group) {
     markerEvents.forEach(eventName => {
         group.on(eventName, closeFiltersForMapInteraction);
     });
+}
+// ===== List view =====
+//
+// The map alone makes it hard to compare dates and is awkward to use with a
+// keyboard or screen reader. The list shows the same data from the same state,
+// so the two views can never disagree.
+
+// parseTournamentDate extracts a sortable start date from the free-text date
+// string the federations publish.
+//
+// Formats seen in live data vary per federation, e.g.:
+//   "22.08. bis 23.08."          (old API, no year)
+//   "Sa, 15.8.2026 abgesagt"     (new API, weekday + trailing note)
+//   "So, 16.8. – Fr, 21.8.2026"  (new API, range)
+//
+// Returns null when nothing usable is found, so sorting can put those last
+// instead of guessing a wrong date.
+function parseTournamentDate(dateText) {
+    if (!dateText) {
+        return null;
+    }
+
+    // First day/month pair wins: it is the tournament's start in every format.
+    const match = String(dateText).match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})?/);
+    if (!match) {
+        return null;
+    }
+
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    if (!day || !month || month > 12 || day > 31) {
+        return null;
+    }
+
+    // Without a year, assume the search window: use the current year and roll
+    // over to the next one when the date already passed by more than a month.
+    let year = match[3] ? parseInt(match[3], 10) : new Date().getFullYear();
+    const parsed = new Date(year, month - 1, day);
+    if (!match[3]) {
+        const monthAgo = new Date();
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        if (parsed < monthAgo) {
+            parsed.setFullYear(year + 1);
+        }
+    }
+
+    return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function compareTournaments(a, b, sortBy) {
+    if (sortBy === 'title') {
+        return (a.title || '').localeCompare(b.title || '', 'de');
+    }
+    if (sortBy === 'organizer') {
+        return (a.organizer || '').localeCompare(b.organizer || '', 'de');
+    }
+
+    // Date: unparseable entries sort last rather than to 1970.
+    const da = parseTournamentDate(a.date);
+    const db = parseTournamentDate(b.date);
+    if (!da && !db) {
+        return (a.title || '').localeCompare(b.title || '', 'de');
+    }
+    if (!da) {
+        return 1;
+    }
+    if (!db) {
+        return -1;
+    }
+    if (da.getTime() !== db.getTime()) {
+        return da - db;
+    }
+    return (a.title || '').localeCompare(b.title || '', 'de');
+}
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderTournamentList() {
+    const list = document.getElementById('tournamentList');
+    const empty = document.getElementById('listEmpty');
+    const count = document.getElementById('listCount');
+    const sortSelect = document.getElementById('listSort');
+
+    if (!list || !empty || !count) {
+        return;
+    }
+
+    const sortBy = sortSelect ? sortSelect.value : 'date';
+    const sorted = currentTournaments.slice().sort((a, b) => compareTournaments(a, b, sortBy));
+
+    count.textContent = sorted.length === 1
+        ? '1 Turnier'
+        : `${sorted.length} Turniere`;
+
+    list.innerHTML = '';
+
+    if (sorted.length === 0) {
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+
+    const fragment = document.createDocumentFragment();
+
+    for (const tournament of sorted) {
+        const entries = (tournament.entries || []).filter(entry =>
+            entry.competition || (entry.skill_level && entry.skill_level.trim() !== ''));
+
+        const item = document.createElement('li');
+        item.className = 'tournament-item';
+
+        const competitions = entries.length > 0
+            ? `<ul class="tournament-competitions">${entries.map(entry => `
+                    <li><span class="competition-name">${escapeHtml(entry.competition || '-')}</span>
+                        <span class="competition-lk">${escapeHtml(entry.skill_level || '')}</span></li>
+               `).join('')}</ul>`
+            : '';
+
+        const hasCoords = tournament.lat && tournament.lon;
+
+        item.innerHTML = `
+            <h3 class="tournament-title">${escapeHtml(tournament.title)}</h3>
+            <dl class="tournament-meta">
+                <dt>Datum</dt><dd>${escapeHtml(tournament.date)}</dd>
+                <dt>Veranstalter</dt>
+                <dd><a target="_blank" rel="noopener"
+                       href="${urlGoogleQuery + encodeURIComponent(tournament.organizer || '')}">
+                       ${escapeHtml(tournament.organizer)}</a></dd>
+            </dl>
+            ${competitions}
+            <div class="tournament-actions">
+                <a href="${escapeHtml(tournament.url)}" target="_blank" rel="noopener"
+                   class="signup-button">Anmelden</a>
+                ${hasCoords ? `<button type="button" class="map-button"
+                    data-tournament-id="${escapeHtml(tournament.id)}">Auf Karte zeigen</button>` : ''}
+            </div>
+        `;
+
+        if (hasCoords) {
+            const mapButton = item.querySelector('.map-button');
+            if (mapButton) {
+                mapButton.addEventListener('click', () => showTournamentOnMap(tournament));
+            }
+        }
+
+        fragment.appendChild(item);
+    }
+
+    list.appendChild(fragment);
+}
+
+// showTournamentOnMap switches to the map and opens the matching popup, so
+// selecting an entry in the list stays connected to the map view.
+function showTournamentOnMap(tournament) {
+    setView('map');
+
+    const lat = parseFloat(tournament.lat);
+    const lon = parseFloat(tournament.lon);
+    if (isNaN(lat) || isNaN(lon)) {
+        return;
+    }
+
+    map.setView([lat, lon], Math.max(map.getZoom(), 12));
+
+    const marker = markerById.get(String(tournament.id));
+    if (!marker) {
+        return;
+    }
+
+    // Markers live in a cluster group, so the cluster has to be expanded
+    // before the popup can open.
+    if (typeof markers.zoomToShowLayer === 'function') {
+        markers.zoomToShowLayer(marker, () => marker.openPopup());
+    } else {
+        marker.openPopup();
+    }
+}
+
+function setView(view) {
+    const mapEl = document.getElementById('map');
+    const listEl = document.getElementById('listView');
+    const mapBtn = document.getElementById('viewMapBtn');
+    const listBtn = document.getElementById('viewListBtn');
+
+    if (!mapEl || !listEl || !mapBtn || !listBtn) {
+        return;
+    }
+
+    currentView = view === 'list' ? 'list' : 'map';
+    const showList = currentView === 'list';
+
+    // The sidebar floats above the map by design. In the list view that would
+    // cover the first results, so the page switches to a normal document flow
+    // with the filters above the list.
+    document.body.classList.toggle('list-mode', showList);
+
+    mapEl.style.display = showList ? 'none' : 'block';
+    listEl.style.display = showList ? 'block' : 'none';
+
+    mapBtn.classList.toggle('active', !showList);
+    listBtn.classList.toggle('active', showList);
+    mapBtn.setAttribute('aria-pressed', String(!showList));
+    listBtn.setAttribute('aria-pressed', String(showList));
+
+    if (showList) {
+        renderTournamentList();
+    } else {
+        // Leaflet renders a grey area when the container was hidden while it
+        // resized, so the map has to be told its size changed.
+        setTimeout(() => map.invalidateSize(), 0);
+    }
 }

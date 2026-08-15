@@ -33,6 +33,7 @@
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
   * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Helps you finding the tournaments around you
+* Map and list view, with the list sortable by date, title or organizer
 * Lets you filter tournaments by date, competition type, and federation
 * Short link to the official Tournament at [tennis.de](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
@@ -156,6 +157,20 @@ tournaments match" apart from "this federation is down":
 any federation failed or is serving stale data; the frontend surfaces that as a
 banner instead of silently showing fewer tournaments.
 
+## Frontend Development
+
+### Running the tests
+
+```bash
+node --check script/main.js     # syntax
+node script/main.test.js        # date parsing, sorting and escaping
+```
+
+Date parsing is the fragile part: federations publish dates as free text in
+several formats (`22.08. bis 23.08.`, `Sa, 15.8.2026 abgesagt`,
+`So, 16.8. – Fr, 21.8.2026`), so changes there should always be covered by a
+test case.
+
 ### Geocoding and map pins
 
 Federations publish only a club name, never a postal address, so the venue's
@@ -188,6 +203,23 @@ If a tournament shows up in the wrong place, add an entry to
 * `note` is required by the tests — explain why the automatic extraction fails.
 
 A different file can be supplied with `TTF_CLUB_LOCATIONS`.
+
+#### Finding wrong pins
+
+`cmd/pincheck` lists tournaments that fell back to their federation's default
+coordinates, which is what produces a stack of unrelated tournaments on one
+marker. Those are the pins worth fixing:
+
+```bash
+cd backend
+go run ./cmd/pincheck -days 30            # report fallback pins
+go run ./cmd/pincheck -days 30 -json      # emit override stubs to paste
+```
+
+Note that venue-exact addresses are **not** available from the upstream
+sources: tennis.de requires a login for tournament details (see issue #55), and
+nuLiga does not expose club addresses. Overrides are therefore the supported
+way to correct a location.
 
 #### Measuring accuracy
 

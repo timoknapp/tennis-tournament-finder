@@ -280,9 +280,36 @@
         </div>
     </div>
     <div id="dataNotice" class="data-notice" role="status" aria-live="polite" style="display: none;"></div>
+
+    <div class="viewToggle" role="group" aria-label="Ansicht wählen">
+        <button type="button" id="viewMapBtn" class="viewToggleBtn active"
+                onclick="setView('map')" aria-pressed="true">Karte</button>
+        <button type="button" id="viewListBtn" class="viewToggleBtn"
+                onclick="setView('list')" aria-pressed="false">Liste</button>
+    </div>
+
     <div id="map">
         <div id="loading" class="loading">Loading&#8230;</div>
     </div>
+
+    <section id="listView" class="list-view" style="display: none;" aria-labelledby="listViewHeading">
+        <h2 id="listViewHeading" class="visually-hidden">Turnierliste</h2>
+
+        <div class="list-controls">
+            <label for="listSort">Sortieren nach:</label>
+            <select id="listSort" onchange="renderTournamentList()">
+                <option value="date">Datum</option>
+                <option value="title">Titel</option>
+                <option value="organizer">Veranstalter</option>
+            </select>
+            <span id="listCount" class="list-count" aria-live="polite"></span>
+        </div>
+
+        <ul id="tournamentList" class="tournament-list"></ul>
+        <p id="listEmpty" class="list-empty" style="display: none;">
+            Keine Turniere gefunden. Bitte Filter anpassen und erneut suchen.
+        </p>
+    </section>
     
     <!-- Update Notification Popup -->
     <div id="updateNotification" class="update-notification" style="display: none;" role="dialog" aria-labelledby="update-title" aria-describedby="update-message">

@@ -1,0 +1,43 @@
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/frontend.yml"
+      - "index.html"
+      - "css/**"
+      - "script/**"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/frontend.yml"
+      - "index.html"
+      - "css/**"
+      - "script/**"
+
+name: Test Frontend
+jobs:
+  test:
+    name: Syntax & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # A syntax error in main.js breaks the whole app silently, since the
+      # page still renders but no script runs.
+      - name: Check JavaScript syntax
+        run: |
+          node --check script/main.js
+          node --check script/mobile-gesture.js
+          node --check service-worker.js
+
+      # Date parsing and sorting cannot be verified by looking at the map.
+      - name: Run frontend unit tests
+        run: node script/main.test.js
