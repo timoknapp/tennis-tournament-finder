@@ -4,6 +4,17 @@
 // reveal by eye: symmetric panel margins, no accidental page scrolling, and a
 // viewport meta tag the browser will actually honour.
 //
+// They run in Chromium and WebKit, because the two engines disagree about
+// form control sizing, flexbox rounding and viewport units, and those
+// disagreements are what reach a phone.
+//
+// Known limit: this is WebKitGTK. It shares Safari's engine but not the
+// control widgets iOS ships, so a date input here is sized from the
+// stylesheet rather than from a native picker. The iOS-only width bug that
+// motivated these tests is therefore still not reproducible on Linux - the
+// assertions catch it by checking the CSS contract (appearance is reset,
+// widths and edges agree) rather than by rendering the native control.
+//
 // Run with: node script/layout.test.js
 // Requires Playwright; skipped automatically when it is unavailable.
 
@@ -12,12 +23,31 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
-let chromium;
+let playwright;
 try {
-    ({ chromium } = require('playwright'));
+    playwright = require('playwright');
 } catch (err) {
     console.log('Playwright not installed - skipping layout tests');
     process.exit(0);
+}
+
+// Chromium and WebKit disagree about form control sizing, flexbox rounding and
+// viewport units, and those disagreements are what reach a phone. WebKit here
+// is WebKitGTK, which shares Safari's engine but not its iOS control widgets,
+// so it narrows the gap rather than closing it.
+async function engines() {
+    const available = [];
+    for (const name of ['chromium', 'webkit']) {
+        if (!playwright[name]) continue;
+        try {
+            const browser = await playwright[name].launch();
+            await browser.close();
+            available.push(name);
+        } catch (err) {
+            console.log(`  (${name} unavailable, skipping: ${err.message.split('\n')[0]})`);
+        }
+    }
+    return available;
 }
 
 const ROOT = path.join(__dirname, '..');
@@ -85,9 +115,16 @@ const VIEWPORTS = [
 (async () => {
     const server = serve();
     await new Promise(r => server.listen(PORT, r));
-    const browser = await chromium.launch();
 
-    console.log('viewport meta');
+    const names = await engines();
+    if (names.length === 0) {
+        console.log('No browser engine available - skipping layout tests');
+        server.close();
+        process.exit(0);
+    }
+    console.log(`engines: ${names.join(', ')}`);
+
+    console.log('\nviewport meta');
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     check('viewport is declared on its own meta element', () => {
         // A single element cannot carry both charset and name: the browser
@@ -105,12 +142,15 @@ const VIEWPORTS = [
         assert.ok(!/maximum-scale\s*=\s*1/i.test(meta), 'maximum-scale must not pin zoom');
     });
 
+    for (const engine of names) {
+    const browser = await playwright[engine].launch();
     for (const [name, width, height] of VIEWPORTS) {
-        console.log(`\n${name} (${width}x${height})`);
+        console.log(`\n[${engine}] ${name} (${width}x${height})`);
 
-        const page = await browser.newPage({
-            viewport: { width, height }, isMobile: true, hasTouch: true,
-        });
+        // WebKitGTK rejects the mobile emulation flags Chromium accepts.
+        const page = await browser.newPage(engine === 'webkit'
+            ? { viewport: { width, height }, hasTouch: true }
+            : { viewport: { width, height }, isMobile: true, hasTouch: true });
         await page.route('**/ttf**', r =>
             r.fulfill({ status: 200, contentType: 'application/json', body: RESPONSE }));
         await page.route('**tile**', r =>
@@ -353,8 +393,9 @@ const VIEWPORTS = [
 
         await page.close();
     }
-
     await browser.close();
+    }
+
     server.close();
 
     if (failures > 0) {
