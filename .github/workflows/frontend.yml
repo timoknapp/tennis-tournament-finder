@@ -45,10 +45,11 @@ jobs:
       - name: Install Playwright
         run: |
           npm install --no-save playwright
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
 
       # Layout regressions (uneven margins, accidental page scrolling) are
       # invisible to unit tests and easy to reintroduce, so they are measured
-      # in a real browser across several phone viewports.
+      # in real browsers across several phone viewports. WebKit is included
+      # because it, not Chromium, is what iPhones run.
       - name: Run layout tests
         run: node script/layout.test.js
