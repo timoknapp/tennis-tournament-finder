@@ -1414,11 +1414,11 @@ body {
         box-sizing: border-box;
     }
 
-    /* The title row starts below the zoom controls, so the panel no longer
-       has to dodge them horizontally. The base rule adds an 8px left margin
-       for the desktop layout, which would push the card off-centre here. */
+    /* The base rule adds an 8px left margin for the desktop layout, which
+       would push the card off-centre here. The zoom buttons that the title
+       used to clear are gone, so the panel starts near the top. */
     .sideBar .title {
-        margin: 52px 0 10px 0;
+        margin: calc(10px + env(safe-area-inset-top, 0px)) 0 10px 0;
     }
 
     .sideBarElement {
@@ -1566,4 +1566,84 @@ select.filterElement {
     background-repeat: no-repeat;
     background-position: right 12px center;
     background-size: 12px 8px;
+}
+
+/* ---------- List view scrolling ----------
+
+   The map view locks the document so the map owns all gestures. The list view
+   is an ordinary scrolling page and needs that lock released, otherwise three
+   scroll containers end up stacked: the document (locked, so the filter panel
+   stays pinned), the filter panel, and the list itself. Reaching a result then
+   means scrolling the right one of the three, which is what made the list feel
+   stuck while the filter was open.
+
+   In list mode the document scrolls normally: the filter sits above the
+   results and moves out of the way as the page scrolls, like any other page. */
+
+body.list-mode,
+html:has(body.list-mode) {
+    overflow: auto;
+    overflow-x: hidden;
+    height: auto;
+}
+
+body.list-mode .list-view {
+    /* The document scrolls, so the list must not trap it in its own box. */
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+}
+
+body.list-mode .filter {
+    /* Same reason: a scrollable filter inside a scrolling page means the user
+       has to guess which one responds to a swipe. */
+    max-height: none;
+    overflow: visible;
+}
+
+/* ---------- View toggle placement ----------
+
+   On a phone the toggle sat in the bottom-right corner, which is awkward for
+   a left thumb and crowds the Leaflet attribution. Centring it makes it
+   reachable with either hand and gives the attribution its corner back. */
+
+@media (max-width: 768px) {
+    .viewToggle {
+        top: auto;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        box-shadow: 0 2px 10px rgba(31, 36, 33, .28);
+    }
+
+    body.list-mode .viewToggle {
+        position: fixed;
+        margin: 0;
+        /* The fixed toggle would otherwise cover the last result. */
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    /* Clearance so the final card is not hidden behind the floating toggle. */
+    body.list-mode .list-view {
+        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* The attribution keeps the corner now that the toggle has moved. */
+    .leaflet-bottom.leaflet-right .leaflet-control-attribution {
+        margin-bottom: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    /* 70vh is measured against the viewport with the browser chrome hidden, so
+       the panel could extend past the visible area and clip its last line.
+       dvh follows the chrome, and the panel is bounded by the space actually
+       left between the title and the floating view toggle. */
+    .filter {
+        max-height: calc(100dvh - 150px - env(safe-area-inset-bottom, 0px));
+    }
 }

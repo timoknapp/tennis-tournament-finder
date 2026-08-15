@@ -269,6 +269,88 @@ const VIEWPORTS = [
                 `chip row inset left ${panel.chipLeft}px vs right ${panel.chipRight}px`);
         });
 
+        const controls = await page.evaluate(() => {
+            const toggle = document.querySelector('.viewToggle').getBoundingClientRect();
+            const panel = document.getElementById('filterContainer').getBoundingClientRect();
+            return {
+                zoomButtons: document.querySelectorAll('.leaflet-control-zoom').length,
+                toggleCentre: (toggle.left + toggle.right) / 2,
+                viewportCentre: window.innerWidth / 2,
+                panelBottom: panel.bottom,
+                toggleTop: toggle.top,
+                viewportHeight: window.innerHeight,
+            };
+        });
+
+        check('map has no zoom buttons', () => {
+            // Pinch, double-tap and the wheel all zoom, so the buttons only
+            // occupied the corner the filter panel needs.
+            assert.strictEqual(controls.zoomButtons, 0, 'zoom control should be disabled');
+        });
+
+        check('view toggle is horizontally centred', () => {
+            const off = Math.abs(controls.toggleCentre - controls.viewportCentre);
+            assert.ok(off <= 2, `toggle is ${off.toFixed(1)}px off centre`);
+        });
+
+        check('open panel fits the visible viewport', () => {
+            // A max-height in vh is measured against the viewport with the
+            // browser chrome hidden, so the panel could extend past what the
+            // user can see and clip its last line.
+            assert.ok(controls.panelBottom <= controls.viewportHeight,
+                `panel ends ${Math.round(controls.panelBottom - controls.viewportHeight)}px below the fold`);
+            assert.ok(controls.panelBottom <= controls.toggleTop,
+                'panel runs underneath the floating view toggle');
+        });
+
+        // The list view is a normal scrolling page; the map view is not. Both
+        // states have to work with the filter panel open, which is where the
+        // scroll containers previously fought each other.
+        await page.click('.submitBtn', { force: true });
+        await page.waitForTimeout(900);
+        await page.click('#viewListBtn', { force: true });
+        await page.waitForTimeout(500);
+
+        const list = await page.evaluate(async () => {
+            const scroller = document.scrollingElement;
+            const reach = scroller.scrollHeight - scroller.clientHeight;
+            scroller.scrollTop = 99999;
+            await new Promise(r => setTimeout(r, 250));
+            const scrolled = scroller.scrollTop;
+            const items = [...document.querySelectorAll('.tournament-item')];
+            const last = items[items.length - 1].getBoundingClientRect();
+            const toggle = document.querySelector('.viewToggle').getBoundingClientRect();
+            const nested = [...document.querySelectorAll('.list-view, .filter')]
+                .filter(el => el.scrollHeight > el.clientHeight + 2).length;
+            return {
+                reach, scrolled, nested,
+                lastHiddenByToggle: last.bottom > toggle.top,
+                toggleCentre: (toggle.left + toggle.right) / 2,
+                viewportCentre: window.innerWidth / 2,
+            };
+        });
+
+        check('list view scrolls', () => {
+            assert.ok(list.reach > 0, 'list should be taller than the viewport');
+            assert.ok(list.scrolled > 0, 'document did not scroll');
+        });
+
+        check('list view has a single scroll container', () => {
+            // Stacking the document, the filter panel and the list meant a
+            // swipe could land on the wrong one and appear to do nothing.
+            assert.strictEqual(list.nested, 0,
+                `${list.nested} nested scroll container(s) inside the page`);
+        });
+
+        check('last result is not hidden behind the toggle', () => {
+            assert.ok(!list.lastHiddenByToggle, 'the floating toggle covers the last result');
+        });
+
+        check('view toggle stays centred in the list view', () => {
+            const off = Math.abs(list.toggleCentre - list.viewportCentre);
+            assert.ok(off <= 2, `toggle is ${off.toFixed(1)}px off centre`);
+        });
+
         await page.close();
     }
 
