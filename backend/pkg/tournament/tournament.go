@@ -19,6 +19,7 @@ import (
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/resultcache"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/skilllevel"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/util"
 )
 
@@ -148,6 +149,42 @@ func buildFederationStatuses(results []FederationResult) ([]FederationStatus, bo
 	return statuses, partial
 }
 
+// FilterByLK removes competition entries a player of the given LK cannot
+// enter, and drops tournaments left without any entry.
+//
+// Entries without a published LK range are kept: a competition that does not
+// state a restriction is open, and hiding it would lose real tournaments.
+func FilterByLK(tournaments []models.Tournament, playerLK float64) []models.Tournament {
+	filtered := make([]models.Tournament, 0, len(tournaments))
+
+	for _, t := range tournaments {
+		// A tournament without parsed entries carries no LK information at
+		// all, so it stays visible rather than being silently dropped.
+		if len(t.Entries) == 0 {
+			filtered = append(filtered, t)
+			continue
+		}
+
+		kept := make([]models.CompetitionEntry, 0, len(t.Entries))
+		for _, e := range t.Entries {
+			range_, ok := skilllevel.Parse(e.SkillLevel)
+			if !ok || range_.Includes(playerLK) {
+				kept = append(kept, e)
+			}
+		}
+
+		if len(kept) == 0 {
+			continue
+		}
+
+		copy_ := t
+		copy_.Entries = kept
+		filtered = append(filtered, copy_)
+	}
+
+	return filtered
+}
+
 func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	federations := federation.GetFederations()
 
@@ -176,12 +213,27 @@ func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	}
 	compType := r.URL.Query().Get("compType")
 	selectedFederations := r.URL.Query().Get("federations")
+	playerLKParam := r.URL.Query().Get("lk")
 
-	logger.Info("Get Tournaments from: %s to: %s, compType: %s, federations: %s", dateFrom, dateTo, compType, selectedFederations)
+	logger.Info("Get Tournaments from: %s to: %s, compType: %s, federations: %s, lk: %s",
+		dateFrom, dateTo, compType, selectedFederations, playerLKParam)
 
 	filteredFederations := FilterFederations(federations, selectedFederations)
 
 	tournaments, results := CollectTournaments(r.Context(), filteredFederations, dateFrom, dateTo, compType)
+
+	// LK filtering happens after the cache lookup on purpose: the cache stores
+	// the full federation result, so different player LKs share one cache
+	// entry instead of multiplying it.
+	if playerLKParam != "" {
+		if playerLK, ok := skilllevel.ParsePlayerLK(playerLKParam); ok {
+			before := len(tournaments)
+			tournaments = FilterByLK(tournaments, playerLK)
+			logger.Info("LK filter %.1f: %d -> %d tournaments", playerLK, before, len(tournaments))
+		} else {
+			logger.Warn("Ignoring invalid lk parameter: %q", playerLKParam)
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 

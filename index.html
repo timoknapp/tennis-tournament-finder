@@ -196,7 +196,7 @@
             <button id="filterToggle" class="filterToggleBtn" onclick="toggleFilters()">Filter ⚙️</button>
         </div>
         <div class="sideBarElement filter" id="filterContainer">
-            <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value, compType.value, getSelectedFederations())">
+            <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value, compType.value, getSelectedFederations(), playerLK.value)">
                 <div class="filterContainer">
                     <label for="dateFrom">Zeitraum von:</label>
                     <input class="filterElement" type="date" id="dateFrom" name="dateFrom">
@@ -218,6 +218,19 @@
                         <option value="Jugend+Einzel">Jugend Einzel</option>
                         <option value="Jugend+Doppel">Jugend Doppel</option>
                     </select>
+                </div>
+                <div class="filterContainer">
+                    <label for="playerLK">Meine LK:</label>
+                    <!-- Deliberately type="text" rather than type="number": a number
+                         input rejects the comma German users type for decimals,
+                         and inputmode still brings up a numeric keyboard. -->
+                    <input class="filterElement" type="text" id="playerLK" name="playerLK"
+                           inputmode="decimal" pattern="[0-9]{1,2}([.,][0-9])?"
+                           placeholder="z.B. 12,5" maxlength="5"
+                           aria-describedby="playerLKHint">
+                    <small id="playerLKHint" class="filterHint">
+                        Zeigt nur Konkurrenzen, für die deine LK zugelassen ist (1–25).
+                    </small>
                 </div>
                 <div class="filterContainer">
                     <label>Tennisverbände:</label>
