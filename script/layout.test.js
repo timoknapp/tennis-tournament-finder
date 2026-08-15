@@ -134,6 +134,10 @@ const VIEWPORTS = [
     }
     console.log(`engines: ${names.join(', ')}`);
 
+    // Read once: several checks reason about the authored rules rather than
+    // computed values, because env() resolves to 0 in a headless browser.
+    const cssSource = fs.readFileSync(path.join(ROOT, 'css', 'main.css'), 'utf8');
+
     console.log('\nviewport meta');
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     check('viewport is declared on its own meta element', () => {
@@ -441,6 +445,8 @@ const VIEWPORTS = [
                 toggleBottomGap: Math.round(window.innerHeight - toggle.bottom),
                 smallestTab: Math.min(...tabs.map(t => t.getBoundingClientRect().height)),
                 tabHeight: tabs[0].getBoundingClientRect().height,
+                tabRowHeight: tabs[0].getBoundingClientRect().height,
+                barPaddingBottom: getComputedStyle(document.querySelector('.viewToggle')).paddingBottom,
                 iconSize: (document.querySelector('.tabIcon') || { getBoundingClientRect: () => ({ height: 0 }) })
                     .getBoundingClientRect().height,
                 viewportWidth: window.innerWidth,
@@ -470,6 +476,32 @@ const VIEWPORTS = [
         check('tabs are large enough to hit', () => {
             assert.ok(controls.smallestTab >= 44,
                 `smallest tab is ${Math.round(controls.smallestTab)}px tall`);
+        });
+
+        // Installed to the home screen there is no browser toolbar, so iOS
+        // exposes the home indicator and reports a 34px bottom inset. A browser
+        // tab reports 0, and headless Chromium always reports 0, so the PWA
+        // case has to be forced to be observed at all - which is precisely why
+        // this reached a device unnoticed.
+        //
+        // The distinction that matters is *where* the stylesheet spends that
+        // inset. As padding on the bar it stretches the tab row itself; as its
+        // own grid row it sits below the tabs. Both resolve to 0px in this
+        // engine, so the authored rule is read from the stylesheet source.
+        const barRules = cssSource.match(/\.viewToggle\s*\{[^}]*\}/g) || [];
+        const insetAsPadding = barRules.some(rule =>
+            /padding-bottom:\s*[^;]*safe-area-inset-bottom/.test(rule));
+        const insetAsRow = barRules.some(rule =>
+            /grid-template-rows:[^;]*safe-area-inset-bottom/.test(rule));
+
+        check('the safe-area inset sits below the tabs, not inside them', () => {
+            // Padding on the bar grew the tappable row from 49px to 83px and
+            // the bar to 119px once installed, while a browser tab looked
+            // correct because it reports no inset at all.
+            assert.ok(!insetAsPadding,
+                'the bar pads itself by the safe-area inset, which stretches the tab row');
+            assert.ok(insetAsRow,
+                'the safe-area inset should be its own grid row below the tabs');
         });
 
         check('tab bar uses native metrics', () => {

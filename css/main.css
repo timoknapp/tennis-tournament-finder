@@ -1480,35 +1480,12 @@ body.list-mode .filter {
 
 /* ---------- View toggle placement ----------
 
-   On a phone the toggle sat in the bottom-right corner, which is awkward for
-   a left thumb and crowds the Leaflet attribution. Centring it makes it
-   reachable with either hand and gives the attribution its corner back. */
+   The centred floating pill this block used to define was replaced by the tab
+   bar further down; only the attribution rule still applies. Leaving the dead
+   rules in place meant two competing definitions of the same element, decided
+   by source order. */
 
 @media (max-width: 768px) {
-    .viewToggle {
-        top: auto;
-        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-        left: 50%;
-        right: auto;
-        transform: translateX(-50%);
-        border-radius: 999px;
-        box-shadow: 0 2px 10px rgba(31, 36, 33, .28);
-    }
-
-    body.list-mode .viewToggle {
-        position: fixed;
-        margin: 0;
-        /* The fixed toggle would otherwise cover the last result. */
-        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-        left: 50%;
-        transform: translateX(-50%);
-    }
-
-    /* Clearance so the final card is not hidden behind the floating toggle. */
-    body.list-mode .list-view {
-        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-    }
-
     /* The attribution keeps the corner now that the toggle has moved. */
     .leaflet-bottom.leaflet-right .leaflet-control-attribution {
         margin-bottom: 0;
@@ -1551,12 +1528,19 @@ body.list-mode .filter {
         right: 0;
         transform: none;
         display: grid;
+        /* The bar is one 49pt row of tabs plus a spacer for the home indicator.
+         *
+         * Previously the inset was padding on the grid itself, which stretches
+         * the row rather than sitting below it: the tappable row grew from 49px
+         * to 83px and the whole bar to 119px once installed. In a browser tab
+         * the toolbar covers that area, so iOS reports an inset of 0 and the
+         * bar looked correct there - which is exactly why this only showed up
+         * as a PWA.
+         *
+         * As a separate row the tabs keep their height whatever the inset is. */
         grid-template-columns: 1fr 1fr;
-        /* iOS tab bars are 49pt tall, with the home indicator area added below
-           rather than padded inside it. Anything taller reads as a web page
-           imitating an app. */
+        grid-template-rows: 49px env(safe-area-inset-bottom, 0px);
         height: calc(49px + env(safe-area-inset-bottom, 0px));
-        padding-bottom: env(safe-area-inset-bottom, 0px);
         /* Opaque by default so results scrolling underneath never show through
            and make the labels hard to read. */
         background: var(--surface);

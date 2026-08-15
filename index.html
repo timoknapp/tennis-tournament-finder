@@ -8,6 +8,13 @@
          viewport-fit=cover lets the layout extend into the safe areas, which
          are then handled with env(safe-area-inset-*) in CSS. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Installed to the home screen there is no browser chrome, so iOS frames
+         the app with the theme colour. The manifest declares black, which put a
+         heavy band above and below the interface. Matching the surface keeps
+         the app's own edges continuous with the system areas. -->
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-13pro.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 482px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-13promax.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-14pro.png" />
