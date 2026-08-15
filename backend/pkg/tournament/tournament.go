@@ -19,8 +19,10 @@ import (
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/placename"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/resultcache"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/skilllevel"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/unresolved"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/util"
 )
 
@@ -620,6 +622,11 @@ func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, 
 	if geoCoords.Lat == "" || geoCoords.Lon == "" {
 		logger.Warn("No Geocoordinates could be found for (%s): '%s'. Falling back to default in '%s'",
 			tournament.Id, subject, fed.State)
+		// A log line scrolls away; the pin stays wrong until someone adds an
+		// override. Recording the club makes the backlog visible at
+		// /stats/unresolved-clubs instead of waiting for a user to report it.
+		unresolved.Record(tournament.Organizer, fed.Id, fed.State,
+			placename.Candidates(tournament.Organizer))
 		return fed.Geocoordinates
 	}
 
