@@ -173,6 +173,16 @@ const VIEWPORTS = [
             assert.strictEqual(closed.y, 0, `vertical overflow of ${closed.y}px`);
         });
 
+        const initialMarkers = await page.evaluate(
+            () => document.querySelectorAll('.leaflet-marker-icon').length);
+        const initialFilterDisplay = await page.evaluate(
+            () => getComputedStyle(document.getElementById('filterContainer')).display);
+
+        await page.click('#filterToggle', { force: true });
+        await page.waitForTimeout(300);
+        const filterAfterFirstTap = await page.evaluate(
+            () => getComputedStyle(document.getElementById('filterContainer')).display);
+
         await page.evaluate(() => {
             document.getElementById('filterContainer').style.display = 'block';
         });

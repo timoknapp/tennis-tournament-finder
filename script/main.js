@@ -33,23 +33,33 @@ const loadingDiv = document.getElementById('loading');
 
 // Initialize mobile filter visibility
 document.addEventListener('DOMContentLoaded', function() {
-    // Force filters visible on first load so users immediately see the options
-    initializeMobileFilters(true);
+    initializeMobileFilters();
     setupFederationLimits();
     registerMapFilterAutoClose();
+    loadInitialTournaments();
 });
 
-function initializeMobileFilters(forceShow = false) {
+// The backend caches results per federation and a scheduler keeps that cache
+// warm, so the default window is already sitting in memory and answers in well
+// under a second. Making the user press "Suchen" to see it meant every visit
+// started on an empty map.
+function loadInitialTournaments() {
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const compType = document.getElementById('compType').value;
+    const playerLK = document.getElementById('playerLK').value;
+
+    getTournamentsByDate(dateFrom, dateTo, compType, getSelectedFederations(), playerLK);
+}
+
+// Called without an argument now: the app loads results immediately, so on a
+// phone the panel starts closed and lets the user see them. It was previously
+// forced open, which covered the map on every visit.
+function initializeMobileFilters() {
     const filterContainer = document.getElementById('filterContainer');
     const toggleBtn = document.getElementById('filterToggle');
 
     if (!filterContainer || !toggleBtn) {
-        return;
-    }
-
-    if (forceShow) {
-        filterContainer.style.display = 'block';
-        toggleBtn.innerHTML = 'Filter ▲';
         return;
     }
 
@@ -105,9 +115,6 @@ function registerMapFilterAutoClose() {
         window.map.on(eventName, closeFiltersForMapInteraction);
     });
 }
-
-// Remove automatic initial request - user must manually submit
-// getTournamentsByDate(initDateFrom, initDateTo, "", getSelectedFederations());
 
 // Tournaments from the most recent search, shared by the map and list views so
 // both always show the same data.
@@ -398,8 +405,14 @@ function renderDataNotice(response, tournamentCount) {
 function toggleFilters() {
     const filterContainer = document.getElementById('filterContainer');
     const toggleBtn = document.getElementById('filterToggle');
-    
-    if (filterContainer.style.display === 'none') {
+
+    // The inline style is empty until something sets it, while the initial
+    // display: none comes from the stylesheet. Reading style.display therefore
+    // reported "visible" on a hidden panel, so the first tap closed an already
+    // closed panel and appeared to do nothing.
+    const hidden = getComputedStyle(filterContainer).display === 'none';
+
+    if (hidden) {
         filterContainer.style.display = 'block';
         toggleBtn.innerHTML = 'Filter ▲';
     } else {
