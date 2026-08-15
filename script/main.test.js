@@ -14,11 +14,18 @@ const vm = require('vm');
 // pure functions under test, and stop before the Leaflet setup runs.
 const source = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
 // Everything from the list view onwards is pure logic, safe to eval.
-const listSection = source.slice(source.indexOf('// ===== List view ====='));
+const listSection = source.slice(source.indexOf('// ===== Map markers ====='));
+
+// Minimal Leaflet stub: the marker helpers only build icon descriptors.
+const L = {
+    icon: opts => ({ options: opts }),
+    divIcon: opts => ({ options: opts }),
+};
 
 const sandbox = {
     console,
     Date,
+    L,
     document: { getElementById: () => null, querySelectorAll: () => [] },
     window: {},
     urlGoogleQuery: 'https://maps.google.com/maps?q=',
@@ -31,7 +38,8 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(listSection, sandbox);
 
-const { parseTournamentDate, compareTournaments, escapeHtml, isValidPlayerLK } = sandbox;
+const { parseTournamentDate, compareTournaments, escapeHtml, isValidPlayerLK,
+        tennisBallPin, clusterIcon } = sandbox;
 
 let failures = 0;
 function test(name, fn) {
@@ -174,6 +182,58 @@ test('rejects empty and non-numeric input', () => {
     for (const v of ['', '   ', null, undefined, 'abc', 'LK']) {
         assert.strictEqual(isValidPlayerLK(v), false, `should reject ${JSON.stringify(v)}`);
     }
+});
+
+console.log('map markers');
+
+test('pin svg is well formed and uses the accent colour', () => {
+    const svg = tennisBallPin();
+    assert.ok(svg.startsWith('<svg'), 'should be an svg element');
+    assert.ok(svg.trim().endsWith('</svg>'), 'should be closed');
+    assert.ok(svg.includes('#2f6f4e'), 'should use the accent colour');
+    // The white outline is what lifts the pin off busy map tiles.
+    assert.ok(svg.includes('stroke="#ffffff"'), 'should have a white outline');
+});
+
+test('pin scales without breaking the viewBox', () => {
+    for (const size of [24, 34, 48]) {
+        const svg = tennisBallPin({ size });
+        assert.ok(svg.includes(`width="${size}"`), `size ${size} should be applied`);
+        // A fixed viewBox is what keeps the artwork proportional at any size.
+        assert.ok(svg.includes('viewBox="0 0 32 40"'), 'viewBox must stay constant');
+    }
+});
+
+test('cluster label is escaped-safe and capped', () => {
+    for (const [count, expected] of [[3, '>3<'], [42, '>42<'], [999, '>999<'], [1500, '>999+<']]) {
+        const icon = clusterIcon(count);
+        assert.ok(icon.options.html.includes(expected),
+            `count ${count} should render as ${expected}`);
+    }
+});
+
+test('cluster grows with the number of tournaments', () => {
+    const small = clusterIcon(5).options.iconSize[0];
+    const medium = clusterIcon(50).options.iconSize[0];
+    const large = clusterIcon(500).options.iconSize[0];
+    assert.ok(small < medium && medium < large, 'sizes should increase with count');
+    // Capped so dense regions are not dominated by huge circles.
+    assert.ok(large <= 60, 'largest cluster should stay reasonable');
+});
+
+test('cluster is anchored at its centre', () => {
+    const icon = clusterIcon(10);
+    const [w, h] = icon.options.iconSize;
+    const [ax, ay] = icon.options.iconAnchor;
+    assert.strictEqual(ax, w / 2, 'x anchor should be centred');
+    assert.strictEqual(ay, h / 2, 'y anchor should be centred');
+});
+
+test('pin is anchored at its tip so it points at the venue', () => {
+    // A centred anchor would place the pin's middle on the coordinates,
+    // which shifts every tournament visibly north on the map.
+    const svg = tennisBallPin({ size: 34 });
+    assert.ok(svg.includes('width="34"'));
 });
 
 if (failures > 0) {
