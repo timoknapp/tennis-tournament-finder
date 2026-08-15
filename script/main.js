@@ -3,7 +3,10 @@ let map = L.map('map', {
   zoomDelta: 0.5,
   doubleClickZoom: true,
   inertia: true,
-  zoomAnimation: true
+  zoomAnimation: true,
+  // Pinch, double-tap and the scroll wheel all zoom, so the +/- buttons only
+  // occupied the corner the filter panel needs.
+  zoomControl: false
 }).setView([51.133481, 10.018343], 7);
 window.map = map; // expose map for gesture script
 L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
@@ -714,6 +717,10 @@ function setView(view) {
     // cover the first results, so the page switches to a normal document flow
     // with the filters above the list.
     document.body.classList.toggle('list-mode', showList);
+    // The map view locks scrolling on the document so the map owns all
+    // gestures; the list view is an ordinary page and needs it released.
+    // Mirrored onto <html> because :has() is not available everywhere.
+    document.documentElement.classList.toggle('list-mode', showList);
 
     mapEl.style.display = showList ? 'none' : 'block';
     listEl.style.display = showList ? 'block' : 'none';
