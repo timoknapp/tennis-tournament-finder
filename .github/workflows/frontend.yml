@@ -24,6 +24,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # The service worker test compares against a genuinely older build,
+          # which it finds in the history. The default shallow clone has none.
+          fetch-depth: 50
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -36,6 +40,8 @@ jobs:
         run: |
           node --check script/main.js
           node --check script/mobile-gesture.js
+          node --check script/layout.test.js
+          node --check script/sw-update.test.js
           node --check service-worker.js
 
       # Date parsing and sorting cannot be verified by looking at the map.
@@ -53,3 +59,8 @@ jobs:
       # because it, not Chromium, is what iPhones run.
       - name: Run layout tests
         run: node script/layout.test.js
+
+      # A merged fix that never reaches the device is not fixed: the update
+      # path itself needs checking, against a genuinely older build.
+      - name: Run service worker update tests
+        run: node script/sw-update.test.js

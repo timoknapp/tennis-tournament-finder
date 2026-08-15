@@ -34,157 +34,63 @@
     <title>LK-Turnier Finder</title>
 
     <script>
-        // Enhanced Service Worker registration with user-friendly update handling
-        let updateAvailable = false;
-        let newWorkerWaiting = null;
+        // Service worker registration.
+        //
+        // This used to ask before applying an update: the new worker stayed in
+        // its waiting state behind a "Update verfügbar? Jetzt / Später" dialog.
+        // Two problems with that. A tournament finder has no unsaved work to
+        // protect, so the prompt bought nothing and left people on an old build
+        // until they happened to answer it. And answering it did not reliably
+        // work: updateApp() reloaded immediately, before the new worker had
+        // taken control, so the reload was still served by the old one and the
+        // page came back unchanged. Tapping "Jetzt" appeared to do nothing.
+        //
+        // Updates are now adopted silently. The page reloads once, when the new
+        // worker actually takes control.
+        if ('serviceWorker' in navigator) {
+            // Whether a worker was already in charge when the page loaded. On a
+            // first-ever visit there is none, and the worker that installs then
+            // claims the page immediately: reloading for that would refresh a
+            // page the user just opened, for no benefit.
+            const hadController = !!navigator.serviceWorker.controller;
 
-        function showUpdateNotification() {
-            const notification = document.getElementById('updateNotification');
-            if (notification) {
-                notification.style.display = 'flex';
-                updateAvailable = true;
-                
-                // Focus management for accessibility
-                const updateNowBtn = document.getElementById('updateNowBtn');
-                if (updateNowBtn) {
-                    updateNowBtn.focus();
-                }
-                
-                // Trap focus within the popup
-                setupFocusTrap(notification);
-            }
-        }
-
-        function hideUpdateNotification() {
-            const notification = document.getElementById('updateNotification');
-            if (notification) {
-                notification.style.display = 'none';
-                removeFocusTrap();
-            }
-        }
-
-        function setupFocusTrap(popup) {
-            const focusableElements = popup.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-            const firstElement = focusableElements[0];
-            const lastElement = focusableElements[focusableElements.length - 1];
-            
-            function handleKeyDown(e) {
-                if (e.key === 'Escape') {
-                    hideUpdateNotification();
-                    // Show notification again after 5 minutes
-                    setTimeout(() => {
-                        if (updateAvailable) {
-                            showUpdateNotification();
-                        }
-                    }, 5 * 60 * 1000);
+            // A reload guard: controllerchange fires again after the reload,
+            // and without this the page would refresh in a loop.
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (refreshing || !hadController) {
                     return;
                 }
-                
-                if (e.key === 'Tab') {
-                    if (e.shiftKey) {
-                        if (document.activeElement === firstElement) {
-                            lastElement.focus();
-                            e.preventDefault();
-                        }
-                    } else {
-                        if (document.activeElement === lastElement) {
-                            firstElement.focus();
-                            e.preventDefault();
-                        }
-                    }
-                }
-            }
-            
-            document.addEventListener('keydown', handleKeyDown);
-            popup.setAttribute('data-focus-trap', 'true');
-        }
-        
-        function removeFocusTrap() {
-            const popup = document.getElementById('updateNotification');
-            if (popup && popup.hasAttribute('data-focus-trap')) {
-                popup.removeAttribute('data-focus-trap');
-                // Remove all keydown listeners by cloning and replacing the document
-                // This is a simple approach - in production you'd track the specific listener
-            }
-        }
+                refreshing = true;
+                window.location.reload();
+            });
 
-        function updateApp() {
-            if (newWorkerWaiting) {
-                // Tell the waiting service worker to skip waiting
-                newWorkerWaiting.postMessage({ type: 'SKIP_WAITING' });
-            }
-            // Reload the page to get the latest version
-            window.location.reload();
-        }
-
-        // Set up event listeners for update buttons
-        document.addEventListener('DOMContentLoaded', function() {
-            const updateNowBtn = document.getElementById('updateNowBtn');
-            const updateLaterBtn = document.getElementById('updateLaterBtn');
-
-            if (updateNowBtn) {
-                updateNowBtn.addEventListener('click', function() {
-                    updateApp();
-                });
-            }
-
-            if (updateLaterBtn) {
-                updateLaterBtn.addEventListener('click', function() {
-                    hideUpdateNotification();
-                    // Show notification again after 5 minutes
-                    setTimeout(() => {
-                        if (updateAvailable) {
-                            showUpdateNotification();
-                        }
-                    }, 5 * 60 * 1000); // 5 minutes
-                });
-            }
-        });
-
-        if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js')
                 .then(registration => {
-                    console.log('SW registered:', registration);
-                    
-                    // Check for updates periodically
-                    setInterval(() => {
-                        registration.update();
-                    }, 60000); // Check every minute
-                    
-                    // Handle updates
+                    // Adopt a worker that installed during an earlier visit and
+                    // is still waiting.
+                    if (registration.waiting && navigator.serviceWorker.controller) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+
                     registration.addEventListener('updatefound', () => {
                         const newWorker = registration.installing;
-                        if (newWorker) {
-                            newWorkerWaiting = newWorker;
-                            
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    // New version is available
-                                    console.log('New version available!');
-                                    showUpdateNotification();
-                                } else if (newWorker.state === 'activated') {
-                                    // This happens when user chooses to update
-                                    updateAvailable = false;
-                                    hideUpdateNotification();
-                                }
-                            });
+                        if (!newWorker) {
+                            return;
                         }
+
+                        newWorker.addEventListener('statechange', () => {
+                            // controller is null on a first-ever visit; there is
+                            // nothing to replace then, and skipping waiting would
+                            // reload a page the user just opened.
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                newWorker.postMessage({ type: 'SKIP_WAITING' });
+                            }
+                        });
                     });
 
-                    // Listen for messages from the service worker
-                    navigator.serviceWorker.addEventListener('message', event => {
-                        if (event.data && event.data.type === 'SW_UPDATED') {
-                            console.log('Service Worker updated, reloading page...');
-                            window.location.reload();
-                        }
-                    });
-
-                    // Show the popup if an update is already waiting (e.g., after a reload)
-                    if (registration.waiting && navigator.serviceWorker.controller) {
-                        newWorkerWaiting = registration.waiting;
-                        updateAvailable = true;
-                        showUpdateNotification();
-                    }
+                    // Pick up deploys without needing a cold start.
+                    setInterval(() => registration.update(), 60000);
                 })
                 .catch(error => console.log('SW registration failed:', error));
         }
@@ -374,21 +280,7 @@
         </p>
     </section>
     
-    <!-- Update Notification Popup -->
-    <div id="updateNotification" class="update-notification" style="display: none;" role="dialog" aria-labelledby="update-title" aria-describedby="update-message">
-        <div class="update-popup">
-            <div class="update-icon" aria-hidden="true">🚀</div>
-            <h3 id="update-title" class="update-title">🎾 Update verfügbar!</h3>
-            <p id="update-message" class="update-message">
-                Möchtest du jetzt aktualisieren? ✨
-            </p>
-            <div class="update-buttons">
-                <button id="updateNowBtn" class="update-btn update-now" type="button">Jetzt</button>
-                <button id="updateLaterBtn" class="update-btn update-later" type="button">Später</button>
-            </div>
-        </div>
-    </div>
-    <script src="script/main.js"></script>
+        <script src="script/main.js"></script>
     <script src="script/mobile-gesture.js"></script>
 </body>
 </html>
