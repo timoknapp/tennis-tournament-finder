@@ -197,6 +197,13 @@
             <button id="filterToggle" class="filterToggleBtn" onclick="toggleFilters()">Filter ⚙️</button>
         </div>
         <div class="sideBarElement filter" id="filterContainer">
+            <!-- Only shown when the panel acts as a sheet on phones. The old
+                 toggle lives in the title row, which is off-screen behind the
+                 sheet, so the sheet needs its own way out. -->
+            <div class="sheetHead">
+                <span class="sheetTitle">Filter</span>
+                <button type="button" class="sheetDone" onclick="toggleFilters()">Fertig</button>
+            </div>
             <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value, compType.value, getSelectedFederations(), playerLK.value)">
                 <div class="filterContainer">
                     <label for="dateFrom">Zeitraum von:</label>
@@ -305,12 +312,44 @@
     </div>
     <div id="dataNotice" class="data-notice" role="status" aria-live="polite" style="display: none;"></div>
 
-    <div class="viewToggle" role="group" aria-label="Ansicht wählen">
-        <button type="button" id="viewMapBtn" class="viewToggleBtn active"
-                onclick="setView('map')" aria-pressed="true">Karte</button>
-        <button type="button" id="viewListBtn" class="viewToggleBtn"
-                onclick="setView('list')" aria-pressed="false">Liste</button>
+    <!-- The two views of the same results. On phones this becomes a bottom tab
+         bar; on wider screens it stays the small toggle in the corner. It is a
+         real tablist so assistive technology announces it as navigation. -->
+    <div class="viewToggle" role="tablist" aria-label="Ansicht wählen">
+        <button type="button" id="viewMapBtn" class="viewToggleBtn active" role="tab"
+                onclick="setView('map')" aria-pressed="true" aria-selected="true">
+            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/>
+            </svg>
+            <span>Karte</span>
+        </button>
+        <button type="button" id="viewListBtn" class="viewToggleBtn" role="tab"
+                onclick="setView('list')" aria-pressed="false" aria-selected="false">
+            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+            </svg>
+            <span>Liste</span>
+        </button>
     </div>
+
+    <!-- Filtering is an action applied to the current view, not a third place
+         to be, so it sits outside the tab bar. Hidden on desktop, where the
+         panel is always visible anyway. -->
+    <button type="button" id="filterFab" class="filterFab" onclick="toggleFilters()"
+            aria-controls="filterContainer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 5h18M6 12h12M10 19h4"/>
+        </svg>
+        <span>Filter</span>
+        <span class="filterFabCount" id="filterFabCount">3</span>
+    </button>
+
+    <!-- Dims the map while the filter sheet is open and gives a tap target for
+         dismissing it. -->
+    <div class="sheetScrim" id="sheetScrim" onclick="toggleFilters()" hidden></div>
 
     <div id="map">
         <div id="loading" class="loading">Loading&#8230;</div>

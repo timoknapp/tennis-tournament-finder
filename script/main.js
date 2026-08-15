@@ -103,6 +103,7 @@ function closeFiltersForMapInteraction() {
 
     filterContainer.style.display = 'none';
     toggleBtn.innerHTML = 'Filter ▼';
+    syncFilterSheet(false);
 }
 
 function registerMapFilterAutoClose() {
@@ -125,6 +126,10 @@ let markerById = new Map();
 let currentView = 'map';
 
 function getTournamentsByDate(dateFrom, dateTo, compType, federations, playerLK) {
+    // On a phone the filter is a sheet covering the results, so submitting it
+    // should reveal what was just asked for.
+    closeFiltersForMapInteraction();
+
     if (dateFrom != "" && dateTo != "") {
         dateFrom = formatDateToAPI(dateFrom);
         dateTo = formatDateToAPI(dateTo);
@@ -360,6 +365,14 @@ function updateFederationCount(selected, total) {
     } else {
         el.textContent = `${selected} von ${total} Verbänden ausgewählt.`;
     }
+
+    // The same number on the filter button, so the current selection is legible
+    // on a phone without opening the sheet.
+    const badge = document.getElementById('filterFabCount');
+    if (badge) {
+        badge.textContent = String(selected);
+        badge.hidden = selected === 0;
+    }
 }
 
 // renderDataNotice surfaces stale or failed federations.
@@ -413,11 +426,32 @@ function toggleFilters() {
     const hidden = getComputedStyle(filterContainer).display === 'none';
 
     if (hidden) {
-        filterContainer.style.display = 'block';
+        // The sheet uses flex on phones, so let the stylesheet decide the value
+        // rather than pinning it to block.
+        filterContainer.style.display = '';
+        if (getComputedStyle(filterContainer).display === 'none') {
+            filterContainer.style.display = 'block';
+        }
         toggleBtn.innerHTML = 'Filter ▲';
     } else {
         filterContainer.style.display = 'none';
         toggleBtn.innerHTML = 'Filter ▼';
+    }
+
+    syncFilterSheet(hidden);
+}
+
+// Keeps the sheet's companions in step with the panel: the scrim that dims the
+// map behind it, and the button's expanded state.
+function syncFilterSheet(isOpen) {
+    const scrim = document.getElementById('sheetScrim');
+    const fab = document.getElementById('filterFab');
+
+    if (scrim) {
+        scrim.hidden = !isOpen;
+    }
+    if (fab) {
+        fab.setAttribute('aria-expanded', String(isOpen));
     }
 }
 
@@ -742,6 +776,10 @@ function setView(view) {
     listBtn.classList.toggle('active', showList);
     mapBtn.setAttribute('aria-pressed', String(!showList));
     listBtn.setAttribute('aria-pressed', String(showList));
+    // The buttons are tabs on phones, where aria-selected is what conveys the
+    // active view; aria-pressed alone would announce them as toggle buttons.
+    mapBtn.setAttribute('aria-selected', String(!showList));
+    listBtn.setAttribute('aria-selected', String(showList));
 
     if (showList) {
         renderTournamentList();
