@@ -453,8 +453,13 @@ function tennisBallPin({ size = 40, accent = MARKER_ACCENT } = {}) {
   <path d="M16 1.5c-6.9 0-12.5 5.6-12.5 12.5 0 8.6 10.6 22 12.1 23.9.2.3.6.3.8 0C17.9 36 28.5 22.6 28.5 14 28.5 7.1 22.9 1.5 16 1.5z"
         fill="${accent}" stroke="#ffffff" stroke-width="2.2" filter="url(#mshadow)"/>
   <circle cx="16" cy="13.7" r="6.1" fill="#e8f24a"/>
-  <path d="M10.6 10.8c3.1 1 5.1 3.3 5.6 6.6M21.4 10.8c-3.1 1-5.1 3.3-5.6 6.6"
-        fill="none" stroke="#ffffff" stroke-width="1.25" stroke-linecap="round" opacity="0.95"/>
+  <!-- A tennis ball's two seams bow in opposite directions, like facing
+       parentheses. Curving them toward each other instead produces a V that
+       reads as a leaf. -->
+  <path d="M11.3 9.6c2.1 2.4 2.1 5.8 0 8.2" fill="none" stroke="#ffffff"
+        stroke-width="1.15" stroke-linecap="round" opacity="0.95"/>
+  <path d="M20.7 9.6c-2.1 2.4-2.1 5.8 0 8.2" fill="none" stroke="#ffffff"
+        stroke-width="1.15" stroke-linecap="round" opacity="0.95"/>
 </svg>`.trim();
 }
 
@@ -489,10 +494,12 @@ function clusterIcon(count) {
     </filter>
   </defs>
   <circle cx="28" cy="28" r="24" fill="${MARKER_ACCENT}" stroke="#ffffff" stroke-width="3" filter="url(#cshadow)"/>
-  <!-- A single seam arc hints at a tennis ball without competing with the
-       count, which is the piece of information that matters. -->
-  <path d="M6.5 20C16 24 21 31 21.5 41" fill="none" stroke="#e8f24a"
-        stroke-width="2.2" stroke-linecap="round" opacity="0.55"/>
+  <!-- Both seams, bowing outward like a real ball, kept faint so the count
+       stays the dominant element. -->
+  <path d="M8 12.5c5 4.6 5 26.4 0 31" fill="none" stroke="#e8f24a"
+        stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <path d="M48 12.5c-5 4.6-5 26.4 0 31" fill="none" stroke="#e8f24a"
+        stroke-width="2" stroke-linecap="round" opacity="0.4"/>
   <text x="28" y="28" text-anchor="middle" dominant-baseline="central"
         font-family="Inter, -apple-system, Segoe UI, Roboto, sans-serif"
         font-size="${fontSize * 56 / size}" font-weight="700" fill="#ffffff">${label}</text>
