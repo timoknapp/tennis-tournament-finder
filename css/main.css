@@ -1684,7 +1684,10 @@ body.list-mode .filter {
         transform: none;
         display: grid;
         grid-template-columns: 1fr 1fr;
-        height: calc(58px + env(safe-area-inset-bottom, 0px));
+        /* iOS tab bars are 49pt tall, with the home indicator area added below
+           rather than padded inside it. Anything taller reads as a web page
+           imitating an app. */
+        height: calc(49px + env(safe-area-inset-bottom, 0px));
         padding-bottom: env(safe-area-inset-bottom, 0px);
         /* Opaque by default so results scrolling underneath never show through
            and make the labels hard to read. */
@@ -1700,11 +1703,14 @@ body.list-mode .filter {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 3px;
+        /* 2px label gap and a 10pt caption are the platform metrics; the icon
+           carries the recognition, the label only confirms it. */
+        gap: 2px;
         min-height: 0;
-        padding: 0;
+        padding: 4px 0 0;
         font-size: 10px;
-        font-weight: 600;
+        font-weight: 500;
+        letter-spacing: 0;
         color: var(--muted);
         background: none;
         border: none;
@@ -1731,14 +1737,14 @@ body.list-mode .filter {
 
     .tabIcon {
         display: block;
-        width: 22px;
-        height: 22px;
+        width: 25px;
+        height: 25px;
     }
 
     .filterFab {
         position: fixed;
-        right: 14px;
-        bottom: calc(58px + 14px + env(safe-area-inset-bottom, 0px));
+        right: 16px;
+        bottom: calc(49px + 16px + env(safe-area-inset-bottom, 0px));
         z-index: 10002;
         display: inline-flex;
         align-items: center;
@@ -1786,6 +1792,15 @@ body.list-mode .filter {
        and the scrim are the ways out. */
     .filterFab[aria-expanded="true"] {
         display: none;
+    }
+
+    /* .sideBar carries z-index: 10000, which makes it a stacking context: its
+       children are painted inside it and can never rise above a sibling with a
+       higher z-index. The scrim therefore covered the sheet and swallowed every
+       tap meant for a filter control. Raising the sidebar itself while the
+       sheet is open lifts the whole context above the scrim. */
+    .sideBar.sheet-open {
+        z-index: 10005;
     }
 
     /* The filter panel becomes a sheet: anchored to the bottom edge, with the
@@ -1855,7 +1870,7 @@ body.list-mode .filter {
 
     /* Only the tab bar overlays the list now. */
     body.list-mode .list-view {
-        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+        padding-bottom: calc(65px + env(safe-area-inset-bottom, 0px));
     }
 
     body.list-mode .viewToggle {
@@ -1871,6 +1886,6 @@ body.list-mode .filter {
 
     /* The attribution sits above the tab bar rather than behind it. */
     .leaflet-bottom.leaflet-right .leaflet-control-attribution {
-        margin-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+        margin-bottom: calc(49px + env(safe-area-inset-bottom, 0px));
     }
 }
