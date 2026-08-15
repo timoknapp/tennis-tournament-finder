@@ -887,3 +887,488 @@ body.list-mode .viewToggle {
         font-size: 2.8vw;
     }
 }
+
+/* ============================================================
+   Design system
+   ============================================================
+
+   The interface previously relied on browser defaults: labels were
+   larger than the inputs they described, blue and green were both used
+   as accents without a rule, and spacing was set per element rather
+   than from a scale.
+
+   Everything below defines one system. It deliberately changes only
+   appearance: no control moves, nothing is hidden behind an extra
+   click, and every interaction stays where it was.
+   ============================================================ */
+
+:root {
+    /* One accent for primary actions and active states. */
+    --accent: #2f6f4e;
+    --accent-hover: #255a3f;
+    --accent-soft: #eaf2ed;
+
+    --ink: #1f2421;
+    --ink-muted: #55605a;   /* meets WCAG AA on white */
+    --line: #e3e6e4;
+    --surface: #ffffff;
+    --canvas: #f4f2ef;
+
+    --radius: 14px;
+    --radius-sm: 9px;
+
+    /* Layered shadows read as lifted paper rather than a hard box. */
+    --shadow-sm: 0 1px 2px rgba(31, 36, 33, .06), 0 1px 3px rgba(31, 36, 33, .08);
+    --shadow-md: 0 2px 6px rgba(31, 36, 33, .07), 0 8px 24px rgba(31, 36, 33, .10);
+
+    /* 4px spacing scale. */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+}
+
+html,
+body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Panels ---------- */
+
+.sideBarElement {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: var(--sp-4);
+}
+
+.title {
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    padding: var(--sp-3) var(--sp-4);
+}
+
+/* ---------- Form controls ----------
+   Labels become quiet metadata; the inputs carry the visual weight. */
+
+.filterContainer {
+    padding: var(--sp-2) var(--sp-4);
+}
+
+.filterContainer > label {
+    display: block;
+    float: none;
+    width: auto;
+    margin-bottom: var(--sp-1);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+}
+
+.filterElement {
+    float: none;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 11px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.filterElement:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.filterHint {
+    margin-top: var(--sp-1);
+    font-size: 12px;
+    color: var(--ink-muted);
+}
+
+/* ---------- Buttons ----------
+   One shape language: same radius and weight, filled for primary,
+   outlined for secondary. */
+
+.submitBtn {
+    width: 100%;
+    padding: 11px 16px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    text-transform: none;
+    color: #fff;
+    background: var(--accent);
+    opacity: 1;
+    border: none;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: background .15s ease, transform .06s ease;
+}
+
+.submitBtn:hover {
+    background: var(--accent-hover);
+}
+
+.submitBtn:active {
+    transform: translateY(1px);
+}
+
+.filterToggleBtn {
+    padding: 6px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.filterToggleBtn:hover {
+    color: var(--ink);
+    border-color: var(--ink-muted);
+    background: transparent;
+}
+
+/* ---------- Federation chips ----------
+   Replaces the spreadsheet-like checkbox grid. The native checkbox stays
+   in the DOM (hidden but focusable), so keyboard and screen reader
+   behaviour is unchanged. */
+
+.federationHeader {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.federationActions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.linkBtn {
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: none;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.linkBtn:hover {
+    background: var(--accent-soft);
+}
+
+.linkBtn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.federationActions .separator {
+    color: var(--line);
+    user-select: none;
+}
+
+.federationCheckboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.checkboxLabel {
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    padding: 5px 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.checkboxLabel:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.checkboxLabel input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+}
+
+.checkboxLabel:has(input:checked) {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.checkboxLabel:has(input:focus-visible) {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.checkboxLabel:has(input:disabled) {
+    opacity: .4;
+    cursor: not-allowed;
+}
+
+/* ---------- View toggle ---------- */
+
+.viewToggle {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.viewToggleBtn {
+    padding: 8px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    background: var(--surface);
+    border: none;
+}
+
+.viewToggleBtn:not(:last-child) {
+    border-right: 1px solid var(--line);
+}
+
+.viewToggleBtn.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* ---------- List ---------- */
+
+.list-view {
+    background: var(--canvas);
+}
+
+.list-controls {
+    font-size: 13px;
+    color: var(--ink-muted);
+}
+
+.list-controls select {
+    padding: 7px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+}
+
+.tournament-item {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: var(--sp-4) var(--sp-5);
+    margin-bottom: var(--sp-3);
+    transition: box-shadow .18s ease, transform .18s ease;
+}
+
+.tournament-item:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+.tournament-title {
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin-bottom: var(--sp-3);
+}
+
+.tournament-meta {
+    gap: var(--sp-1) var(--sp-4);
+    font-size: 13.5px;
+}
+
+.tournament-meta dt {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding-top: 2px;
+}
+
+.tournament-meta dd {
+    color: var(--ink);
+}
+
+/* A raw blue underlined link was the strongest "unstyled page" signal. */
+.tournament-meta a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+.tournament-meta a:hover {
+    border-bottom-color: var(--accent);
+}
+
+.tournament-competitions {
+    background: var(--accent-soft);
+    border-radius: var(--radius-sm);
+    padding: var(--sp-3);
+    font-size: 13px;
+}
+
+/* Tabular figures keep the LK column aligned down the list. */
+.competition-lk {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+}
+
+.tournament-actions {
+    gap: var(--sp-2);
+}
+
+.signup-button {
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    opacity: 1;
+    border-radius: var(--radius-sm);
+}
+
+.signup-button:hover {
+    background: var(--accent-hover);
+}
+
+.map-button {
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+}
+
+.map-button:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+/* ---------- Notice ---------- */
+
+.data-notice {
+    padding: 10px var(--sp-4);
+    font-size: 13px;
+    border-bottom: none;
+}
+
+.data-notice.warning {
+    background: #fdf6e7;
+    color: #6b4f14;
+}
+
+.data-notice.error {
+    background: #fcefee;
+    color: #7d2b22;
+}
+
+/* ---------- Map popup ---------- */
+
+.leaflet-popup-content-wrapper {
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+}
+
+.popupTitle {
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+@media (max-width: 768px) {
+    .title { font-size: 4.2vw; }
+    .filterContainer > label { font-size: 3vw; }
+    .filterElement { font-size: 3.8vw; padding: 2.5vw 3vw; }
+    .checkboxLabel { font-size: 3.2vw; padding: 1.6vw 3vw; }
+    .submitBtn { font-size: 3.9vw; padding: 3vw; }
+    /* Comfortable touch targets; text alone would be far too small to hit. */
+    .linkBtn {
+        font-size: 3.4vw;
+        padding: 10px 12px;
+    }
+
+    .checkboxLabel {
+        min-height: 34px;
+    }
+    .tournament-title { font-size: 4.2vw; }
+}
+
+/* The view toggle sits bottom-right on phones and would cover the Leaflet /
+   OpenStreetMap attribution, which has to stay visible for licence reasons.
+   Lifting the attribution keeps both readable. */
+@media (max-width: 768px) {
+    .leaflet-bottom.leaflet-right .leaflet-control-attribution {
+        margin-bottom: 62px;
+    }
+}
+
+/* ---------- Map markers ----------
+   The marker cluster plugin ships its own coloured circles; they are
+   replaced by the app's own icons, so the defaults have to be cleared. */
+
+.ttf-cluster {
+    background: none;
+    border: none;
+}
+
+.ttf-cluster svg {
+    display: block;
+}
+
+/* Subtle lift on hover so a pin feels clickable. */
+.leaflet-marker-icon {
+    transition: transform .12s ease;
+}
+
+.leaflet-marker-icon:hover {
+    transform: scale(1.08);
+}
+
+/* The cluster is anchored at its centre, so it must scale from there. */
+.ttf-cluster:hover {
+    transform: scale(1.06);
+}

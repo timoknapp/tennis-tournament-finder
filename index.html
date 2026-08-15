@@ -23,7 +23,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Make sure you put this AFTER Leaflet's CSS -->
     <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js" integrity="sha512-BB3hKbKWOc9Ez/TAwyWxNXeoV9c1v6FIeYiBieIWkpLjauysF18NzgR1MBNBXf8/KABdlkX68nAhlwcDFLGPCQ==" crossorigin=""></script>
@@ -233,8 +233,15 @@
                     </small>
                 </div>
                 <div class="filterContainer">
-                    <label>Tennisverbände:</label>
-                    <div class="federationCheckboxes">
+                    <div class="federationHeader">
+                        <label id="federationLabel">Tennisverbände:</label>
+                        <div class="federationActions">
+                            <button type="button" class="linkBtn" onclick="selectAllFederations()">Alle</button>
+                            <span class="separator" aria-hidden="true">|</span>
+                            <button type="button" class="linkBtn" onclick="deselectAllFederations()">Keine</button>
+                        </div>
+                    </div>
+                    <div class="federationCheckboxes" role="group" aria-labelledby="federationLabel">
                         <label class="checkboxLabel" title="Badischer Tennisverband">
                             <input type="checkbox" name="federations" value="BAD" checked> BAD
                         </label>
@@ -286,11 +293,8 @@
                         <label class="checkboxLabel" title="Westfälischer Tennis-Verband">
                             <input type="checkbox" name="federations" value="WTV"> WTV
                         </label>
-                        <!-- <div class="federationControls">
-                            <button type="button" onclick="selectAllFederations()">Alle</button>
-                            <button type="button" onclick="deselectAllFederations()">Keine</button>
-                        </div> -->
                     </div>
+                    <small id="federationCount" class="filterHint" aria-live="polite"></small>
                 </div>
                 <div class="filterContainer submitContainer">
                     <input class="submitBtn" type="submit" value="Suchen">

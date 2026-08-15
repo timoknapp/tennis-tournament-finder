@@ -156,7 +156,7 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations, playerLK)
                     }
                 }
 
-                const marker = L.marker([tournament["lat"], tournament["lon"]])
+                const marker = L.marker([tournament["lat"], tournament["lon"]], { icon: tournamentIcon() })
                 .bindPopup(`
                 <span class="popupTitle">${tournament["title"]}</span><br><br>
                 <div class="popup-info-text">
@@ -331,6 +331,25 @@ function updateFederationSelectionState() {
             checkbox.disabled = false;
         }
     });
+
+    updateFederationCount(checkedBoxes.length, checkboxes.length);
+}
+
+// updateFederationCount reports the selection, so "Keine" cannot leave the
+// user wondering why a search returns nothing.
+function updateFederationCount(selected, total) {
+    const el = document.getElementById('federationCount');
+    if (!el) {
+        return;
+    }
+
+    if (selected === 0) {
+        el.textContent = 'Kein Verband ausgewählt — bitte mindestens einen wählen.';
+    } else if (selected === total) {
+        el.textContent = `Alle ${total} Verbände ausgewählt.`;
+    } else {
+        el.textContent = `${selected} von ${total} Verbänden ausgewählt.`;
+    }
 }
 
 // renderDataNotice surfaces stale or failed federations.
@@ -387,7 +406,11 @@ function toggleFilters() {
 }
 
 function createMarkerClusterGroup() {
-    const group = L.markerClusterGroup();
+    const group = L.markerClusterGroup({
+        iconCreateFunction: cluster => clusterIcon(cluster.getChildCount()),
+        showCoverageOnHover: false,
+        maxClusterRadius: 55,
+    });
     attachFilterAutoCloseToMarkers(group);
     return group;
 }
@@ -402,6 +425,87 @@ function attachFilterAutoCloseToMarkers(group) {
         group.on(eventName, closeFiltersForMapInteraction);
     });
 }
+// ===== Map markers =====
+//
+// The default Leaflet pin is a generic blue teardrop that reads as "some
+// library" rather than as this app. These markers use the app's accent colour
+// and carry a tennis ball inside the pin, so they tie back to the product and
+// stay legible against both street and satellite tiles.
+//
+// They are inline SVG (via a data URI) rather than image files: that keeps
+// them crisp on any display density, adds no extra request, and lets the
+// colour follow the design tokens.
+
+const MARKER_ACCENT = '#2f6f4e';
+const MARKER_ACCENT_DARK = '#255a3f';
+
+// tennisBallPin returns an SVG pin with a tennis ball at its centre.
+// The white ring around the pin lifts it off busy map tiles.
+function tennisBallPin({ size = 40, accent = MARKER_ACCENT } = {}) {
+    const height = Math.round(size * 1.25);
+    return `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${height}" viewBox="0 0 32 40">
+  <defs>
+    <filter id="mshadow" x="-50%" y="-30%" width="200%" height="180%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.4" flood-color="#1f2421" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <path d="M16 1.5c-6.9 0-12.5 5.6-12.5 12.5 0 8.6 10.6 22 12.1 23.9.2.3.6.3.8 0C17.9 36 28.5 22.6 28.5 14 28.5 7.1 22.9 1.5 16 1.5z"
+        fill="${accent}" stroke="#ffffff" stroke-width="2.2" filter="url(#mshadow)"/>
+  <circle cx="16" cy="13.7" r="6.1" fill="#e8f24a"/>
+  <path d="M10.6 10.8c3.1 1 5.1 3.3 5.6 6.6M21.4 10.8c-3.1 1-5.1 3.3-5.6 6.6"
+        fill="none" stroke="#ffffff" stroke-width="1.25" stroke-linecap="round" opacity="0.95"/>
+</svg>`.trim();
+}
+
+function svgIcon(svg, size, height, anchorY) {
+    return L.icon({
+        iconUrl: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        iconSize: [size, height],
+        iconAnchor: [size / 2, anchorY],
+        popupAnchor: [0, -anchorY + 4],
+    });
+}
+
+function tournamentIcon() {
+    const size = 34;
+    const height = Math.round(size * 1.25);
+    return svgIcon(tennisBallPin({ size }), size, height, height - 2);
+}
+
+// clusterIcon draws the group count inside a tennis ball, so a cluster reads
+// as "several tournaments here" rather than as an unrelated coloured blob.
+function clusterIcon(count) {
+    // Three sizes keep dense areas from being dominated by huge circles.
+    const size = count < 10 ? 38 : count < 100 ? 46 : 54;
+    const fontSize = count < 10 ? 14 : count < 100 ? 15 : 15;
+    const label = count > 999 ? '999+' : String(count);
+
+    const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 56 56">
+  <defs>
+    <filter id="cshadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#1f2421" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <circle cx="28" cy="28" r="24" fill="${MARKER_ACCENT}" stroke="#ffffff" stroke-width="3" filter="url(#cshadow)"/>
+  <!-- A single seam arc hints at a tennis ball without competing with the
+       count, which is the piece of information that matters. -->
+  <path d="M6.5 20C16 24 21 31 21.5 41" fill="none" stroke="#e8f24a"
+        stroke-width="2.2" stroke-linecap="round" opacity="0.55"/>
+  <text x="28" y="28" text-anchor="middle" dominant-baseline="central"
+        font-family="Inter, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="${fontSize * 56 / size}" font-weight="700" fill="#ffffff">${label}</text>
+</svg>`.trim();
+
+    return L.divIcon({
+        html: svg,
+        className: 'ttf-cluster',
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+    });
+}
+
 // ===== List view =====
 //
 // The map alone makes it hard to compare dates and is awkward to use with a
