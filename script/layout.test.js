@@ -66,13 +66,23 @@ const TILE = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk' +
     'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 
+// Enough results that the list overflows every viewport under test; the
+// scrolling assertions are meaningless against a list that fits on screen.
+const TOURNAMENTS = Array.from({ length: 20 }, (_, i) => ({
+    id: String(i + 1),
+    title: `Testturnier ${i + 1}`,
+    url: '#',
+    date: '22.08. bis 23.08.',
+    location: 'Karlsruhe',
+    organizer: `TC Karlsruhe ${i + 1}`,
+    lat: String(49.0069 + i * 0.02),
+    lon: String(8.4037 + i * 0.02),
+    entries: [{ competition: 'Herren Einzel', skill_level: 'LK 12,0' }],
+}));
+
 const RESPONSE = JSON.stringify({
-    tournaments: [{
-        id: '1', title: 'Testturnier', url: '#', date: '22.08. bis 23.08.',
-        location: 'Karlsruhe', organizer: 'TC Karlsruhe',
-        lat: '49.0069', lon: '8.4037', entries: [],
-    }],
-    federations: [{ id: 'BAD', status: 'ok', count: 1 }],
+    tournaments: TOURNAMENTS,
+    federations: [{ id: 'BAD', status: 'ok', count: TOURNAMENTS.length }],
     partial: false,
 });
 
@@ -178,10 +188,24 @@ const VIEWPORTS = [
         const initialFilterDisplay = await page.evaluate(
             () => getComputedStyle(document.getElementById('filterContainer')).display);
 
-        await page.click('#filterToggle', { force: true });
-        await page.waitForTimeout(300);
+        // The filter action moved out of the title row into its own control.
+        await page.click('#filterFab', { force: true });
+        await page.waitForTimeout(350);
         const filterAfterFirstTap = await page.evaluate(
             () => getComputedStyle(document.getElementById('filterContainer')).display);
+
+        const sheet = await page.evaluate(() => {
+            const panel = document.getElementById('filterContainer');
+            const rect = panel.getBoundingClientRect();
+            const scrim = document.getElementById('sheetScrim');
+            const fab = document.getElementById('filterFab');
+            return {
+                topGap: Math.round(rect.top),
+                scrimShown: scrim ? !scrim.hidden : false,
+                fabHidden: getComputedStyle(fab).display === 'none',
+                doneVisible: !!document.querySelector('.sheetDone'),
+            };
+        });
 
         await page.evaluate(() => {
             document.getElementById('filterContainer').style.display = 'block';
@@ -322,10 +346,14 @@ const VIEWPORTS = [
         const controls = await page.evaluate(() => {
             const toggle = document.querySelector('.viewToggle').getBoundingClientRect();
             const panel = document.getElementById('filterContainer').getBoundingClientRect();
+            const tabs = [...document.querySelectorAll('.viewToggleBtn')];
             return {
                 zoomButtons: document.querySelectorAll('.leaflet-control-zoom').length,
-                toggleCentre: (toggle.left + toggle.right) / 2,
-                viewportCentre: window.innerWidth / 2,
+                toggleRole: document.querySelector('.viewToggle').getAttribute('role'),
+                toggleWidth: toggle.width,
+                toggleBottomGap: Math.round(window.innerHeight - toggle.bottom),
+                smallestTab: Math.min(...tabs.map(t => t.getBoundingClientRect().height)),
+                viewportWidth: window.innerWidth,
                 panelBottom: panel.bottom,
                 toggleTop: toggle.top,
                 viewportHeight: window.innerHeight,
@@ -338,19 +366,29 @@ const VIEWPORTS = [
             assert.strictEqual(controls.zoomButtons, 0, 'zoom control should be disabled');
         });
 
-        check('view toggle is horizontally centred', () => {
-            const off = Math.abs(controls.toggleCentre - controls.viewportCentre);
-            assert.ok(off <= 2, `toggle is ${off.toFixed(1)}px off centre`);
+        check('view toggle is a tab bar across the bottom', () => {
+            // Two destinations, full width, anchored to the bottom edge where
+            // the thumb rests.
+            assert.strictEqual(controls.toggleRole, 'tablist',
+                'the view switcher should expose a tablist');
+            assert.ok(controls.toggleWidth >= controls.viewportWidth - 1,
+                `tab bar is ${Math.round(controls.toggleWidth)}px of ${controls.viewportWidth}px`);
+            assert.ok(controls.toggleBottomGap <= 1,
+                `tab bar sits ${controls.toggleBottomGap}px above the bottom edge`);
+        });
+
+        check('tabs are large enough to hit', () => {
+            assert.ok(controls.smallestTab >= 44,
+                `smallest tab is ${Math.round(controls.smallestTab)}px tall`);
         });
 
         check('open panel fits the visible viewport', () => {
             // A max-height in vh is measured against the viewport with the
             // browser chrome hidden, so the panel could extend past what the
-            // user can see and clip its last line.
-            assert.ok(controls.panelBottom <= controls.viewportHeight,
+            // user can see and clip its last line. The sheet is anchored to the
+            // bottom edge, so it ends exactly there rather than above the tabs.
+            assert.ok(controls.panelBottom <= controls.viewportHeight + 1,
                 `panel ends ${Math.round(controls.panelBottom - controls.viewportHeight)}px below the fold`);
-            assert.ok(controls.panelBottom <= controls.toggleTop,
-                'panel runs underneath the floating view toggle');
         });
 
         // The list view is a normal scrolling page; the map view is not. Both
@@ -372,11 +410,24 @@ const VIEWPORTS = [
             const toggle = document.querySelector('.viewToggle').getBoundingClientRect();
             const nested = [...document.querySelectorAll('.list-view, .filter')]
                 .filter(el => el.scrollHeight > el.clientHeight + 2).length;
+            // Anything fixed that sits on top of a result is a defect.
+            let covered = 0;
+            const floating = [...document.querySelectorAll('.filterFab, .viewToggle')]
+                .filter(el => getComputedStyle(el).position === 'fixed');
+            document.querySelectorAll('.tournament-item a, .tournament-item button').forEach(el => {
+                const r = el.getBoundingClientRect();
+                if (!r.width) return;
+                if (floating.some(f => {
+                    const c = f.getBoundingClientRect();
+                    return !(r.right < c.left || r.left > c.right || r.bottom < c.top || r.top > c.bottom);
+                })) covered++;
+            });
+
             return {
-                reach, scrolled, nested,
+                reach, scrolled, nested, covered,
                 lastHiddenByToggle: last.bottom > toggle.top,
-                toggleCentre: (toggle.left + toggle.right) / 2,
-                viewportCentre: window.innerWidth / 2,
+                toggleWidth: toggle.width,
+                viewportWidth: window.innerWidth,
             };
         });
 
@@ -396,9 +447,17 @@ const VIEWPORTS = [
             assert.ok(!list.lastHiddenByToggle, 'the floating toggle covers the last result');
         });
 
-        check('view toggle stays centred in the list view', () => {
-            const off = Math.abs(list.toggleCentre - list.viewportCentre);
-            assert.ok(off <= 2, `toggle is ${off.toFixed(1)}px off centre`);
+        check('tab bar spans the list view too', () => {
+            assert.ok(list.toggleWidth >= list.viewportWidth - 1,
+                'the tab bar should stay full width in the list');
+        });
+
+        check('nothing floats over the results', () => {
+            // A control floating above a scrolling list eventually covers a
+            // link in it; measured against the real list, it covered
+            // "Auf Karte zeigen".
+            assert.strictEqual(list.covered, 0,
+                `${list.covered} interactive element(s) sit under floating chrome`);
         });
 
         await page.close();

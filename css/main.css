@@ -1601,6 +1601,15 @@ body.list-mode .filter {
     overflow: visible;
 }
 
+/* On phones the filter is a sheet in both views, so it keeps its own bounds
+   and its own scrolling regardless of list mode. */
+@media (max-width: 768px) {
+    body.list-mode .sideBar .filter {
+        max-height: 82dvh;
+        overflow: hidden;
+    }
+}
+
 /* ---------- View toggle placement ----------
 
    On a phone the toggle sat in the bottom-right corner, which is awkward for
@@ -1645,5 +1654,223 @@ body.list-mode .filter {
        left between the title and the floating view toggle. */
     .filter {
         max-height: calc(100dvh - 150px - env(safe-area-inset-bottom, 0px));
+    }
+}
+
+/* ---------- Mobile navigation ----------
+
+   The two views are destinations and become a bottom tab bar. Filtering is an
+   action applied to whichever view is open, so it stays a separate button that
+   raises the panel as a sheet. Making the filter a third tab tested worse: a
+   tab is a whole destination, so opening it hides the results being filtered.
+
+   Desktop keeps the existing layout; everything here is inside the phone
+   breakpoint. */
+
+.tabIcon { display: none; }
+
+.sheetHead { display: none; }
+
+.filterFab { display: none; }
+
+.sheetScrim { display: none; }
+
+@media (max-width: 768px) {
+    .viewToggle {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        transform: none;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        height: calc(58px + env(safe-area-inset-bottom, 0px));
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        /* Opaque by default so results scrolling underneath never show through
+           and make the labels hard to read. */
+        background: var(--surface);
+        border-top: 1px solid var(--line);
+        border-radius: 0;
+        box-shadow: none;
+        overflow: visible;
+    }
+
+    .viewToggleBtn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        min-height: 0;
+        padding: 0;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        background: none;
+        border: none;
+    }
+
+    .viewToggleBtn:not(:last-child) { border-right: none; }
+
+    /* Where the browser can blur, the bar can be translucent without costing
+       legibility. */
+    @supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+        .viewToggle {
+            background: rgba(255, 255, 255, .88);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+    }
+
+    /* The active tab is marked by colour and the icon, not a filled block:
+       a full-width highlight in a tab bar reads as a pressed button. */
+    .viewToggleBtn.active {
+        color: var(--accent);
+        background: none;
+    }
+
+    .tabIcon {
+        display: block;
+        width: 22px;
+        height: 22px;
+    }
+
+    .filterFab {
+        position: fixed;
+        right: 14px;
+        bottom: calc(58px + 14px + env(safe-area-inset-bottom, 0px));
+        z-index: 10002;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 44px;
+        padding: 11px 16px;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        background: var(--accent);
+        border: none;
+        border-radius: 999px;
+        box-shadow: 0 3px 12px rgba(31, 36, 33, .26);
+    }
+
+    .filterFab svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    /* The count is the panel's state made visible without opening it. */
+    .filterFabCount {
+        min-width: 20px;
+        padding: 0 6px;
+        font-size: 11px;
+        line-height: 19px;
+        text-align: center;
+        background: rgba(255, 255, 255, .22);
+        border-radius: 999px;
+    }
+
+    .sheetScrim {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 10003;
+        background: rgba(31, 36, 33, .4);
+    }
+
+    .sheetScrim[hidden] { display: none; }
+
+    /* While the sheet is open the button has nothing left to do, and it would
+       otherwise sit on top of the sheet's own controls. The sheet's "Fertig"
+       and the scrim are the ways out. */
+    .filterFab[aria-expanded="true"] {
+        display: none;
+    }
+
+    /* The filter panel becomes a sheet: anchored to the bottom edge, with the
+       map still visible above it. .sideBar sets top: 0, which combined with
+       bottom: 0 stretches a fixed element to the full height and defeats
+       max-height, so top has to be released explicitly. */
+    .sideBar .filter {
+        position: fixed;
+        top: auto;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10004;
+        width: 100%;
+        max-height: 82dvh;
+        margin: 0;
+        padding: 0;
+        border-radius: 18px 18px 0 0;
+        box-shadow: 0 -3px 20px rgba(31, 36, 33, .18);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sheetHead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex: none;
+        padding: 14px 16px 10px;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .sheetTitle {
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    .sheetDone {
+        padding: 8px 4px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--accent);
+        background: none;
+        border: none;
+    }
+
+    .sideBar .filter form {
+        overflow-y: auto;
+        padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* The title row keeps the app name; its old filter button is redundant now
+       that the action has its own control near the thumb. */
+    .filterToggleBtn { display: none; }
+
+    /* Anything floating over a scrolling list eventually sits on top of a link
+       in it; measured against the real list, it covered "Auf Karte zeigen".
+       The map needs a floating control because it has no header to put one in,
+       but the list does, so there the button joins the normal flow and scrolls
+       away with the content. */
+    body.list-mode .filterFab {
+        position: static;
+        display: flex;
+        margin: 0 0 12px auto;
+    }
+
+    /* Only the tab bar overlays the list now. */
+    body.list-mode .list-view {
+        padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    }
+
+    body.list-mode .viewToggle {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        transform: none;
+        margin: 0;
+        width: auto;
+        max-width: none;
+    }
+
+    /* The attribution sits above the tab bar rather than behind it. */
+    .leaflet-bottom.leaflet-right .leaflet-control-attribution {
+        margin-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
     }
 }
