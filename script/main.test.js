@@ -229,6 +229,31 @@ test('cluster is anchored at its centre', () => {
     assert.strictEqual(ay, h / 2, 'y anchor should be centred');
 });
 
+// Regression: the first version drew both seams curving toward each other,
+// which formed a V and read as a leaf rather than a tennis ball.
+test('ball seams bow in opposite directions', () => {
+    const svg = tennisBallPin();
+
+    // Two separate seam paths, not one combined path with an M-jump.
+    const seams = svg.match(/<path d="M[\d.]+ [\d.]+c-?[\d.]/g) || [];
+    assert.ok(seams.length >= 2, 'expected two separate seam paths');
+
+    // A real ball's seams mirror each other: one curves right (positive x
+    // control points), the other left (negative). A V shape has both
+    // converging, which shows up as the same sign on both.
+    const left = svg.includes('M11.3 9.6c2.1');
+    const right = svg.includes('M20.7 9.6c-2.1');
+    assert.ok(left && right, 'seams must mirror each other around the centre');
+});
+
+test('cluster keeps both seams faint enough to read the count', () => {
+    const html = clusterIcon(42).options.html;
+    const opacities = [...html.matchAll(/opacity="([\d.]+)"/g)].map(m => parseFloat(m[1]));
+    assert.ok(opacities.length >= 1, 'seams should declare an opacity');
+    assert.ok(Math.max(...opacities) <= 0.5,
+        'seams must stay subtle so the count dominates');
+});
+
 test('pin is anchored at its tip so it points at the venue', () => {
     // A centred anchor would place the pin's middle on the coordinates,
     // which shifts every tournament visibly north on the map.
