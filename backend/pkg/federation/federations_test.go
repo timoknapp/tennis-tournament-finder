@@ -53,6 +53,11 @@ func TestFederationsAreWellFormed(t *testing.T) {
 				if fed.TrustedProperties == "" {
 					t.Error("new API federations require TrustedProperties")
 				}
+			case "btv":
+				// Bavaria runs its own ZK widget instead of nuLiga.
+				if fed.TrustedProperties != "" {
+					t.Error("the BTV widget does not use TrustedProperties")
+				}
 			default:
 				t.Errorf("unknown ApiVersion %q", fed.ApiVersion)
 			}
@@ -115,6 +120,9 @@ func TestExpectedFederationsArePresent(t *testing.T) {
 		"BAD", "HTV", "RLP", "STV", "TMV", "TSA", "TTV", "TVN", "WTB",
 		// Added for issue #49
 		"TVBB", "HAM", "TVM", "TNB", "STB", "WTV",
+		// Completing #49: Schleswig-Holstein (nuLiga code SLH) and Bavaria
+		// (own widget).
+		"SLH", "BTV",
 	}
 
 	got := make(map[string]bool)

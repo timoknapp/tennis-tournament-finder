@@ -18,10 +18,12 @@
 
 * Currently supported tennis federations:
   * [Badischer Tennis Verband (BAD)](https://www.badischertennisverband.de/)
+  * [Bayerischer Tennis-Verband (BTV)](https://www.btv.de)
   * [Hamburger Tennisverband (HAM)](https://www.hamburger-tennisverband.de)
   * [Hessischer Tennis Verband (HTV)](https://www.htv-tennis.de/)
   * [Rheinland-Pfälzischer Tennis Verband (RPTV)](https://www.rlp-tennis.de/)
   * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
+  * [Tennisverband Schleswig-Holstein (SLH)](https://www.tennis.de/slh.html)
   * [Sächsischer Tennis Verband (STV)](https://www.stv-tennis.de)
   * [Tennisverband Mecklenburg-Vorpommern (TMV)](https://www.tennis-mv.de)
   * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
@@ -39,12 +41,10 @@
 * Link to address on Google Maps.
 * PWAs (Progressive Web Apps) support. You can install the app on your phone.
 
+All 17 German regional federations are supported.
+
 ### Soon
 
-* Support for more tennis federations:
-  * [Bayerischer Tennis Verband (BTV)](https://www.btv.de) — no longer served by
-    liga.nu, so it needs its own parser
-  * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis.sh)
 * Store favorite tournaments (locally)
 
 ## Backend Development
@@ -133,6 +133,31 @@ Cache contents are visible at `http://127.0.0.1:9090/stats` under
 
 Enable the scheduler to keep the cache warm ahead of user traffic; it
 invalidates before fetching, so a scheduled run always retrieves current data.
+
+### Federation data sources
+
+Sixteen federations are served by the shared nuLiga platform and use one of two
+parsers (`old`/`new`). Two are special:
+
+| Federation | Note |
+| --- | --- |
+| SLH | Commonly abbreviated TSH, but nuLiga serves it as `slh.liga.nu` with `federation=SLH`. |
+| BTV | Bavaria left nuLiga. `btv.de` embeds a ZK (zkoss) widget hosted at `btv-prod.burdadigitalsystems.de`, handled by `pkg/btv`. |
+
+The BTV widget needs no authentication, but it is a stateful UI protocol rather
+than an API:
+
+1. `GET` the widget page for a `JSESSIONID` and the ZK desktop id.
+2. `POST` `onClientInfo` to render the result grid.
+3. `POST` `onPaging` per further page — the grid shows 10 rows at a time.
+
+Two details are easy to get wrong and are covered by tests:
+
+* **`ZK-SID` must increment per request.** With a constant value the server
+  treats later requests as duplicates and replays the first response, so
+  pagination silently returns page 0 forever.
+* **The paging widget's uuid is regenerated in every response** and has to be
+  re-read before the next request.
 
 ### LK filtering
 

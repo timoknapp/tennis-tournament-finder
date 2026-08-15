@@ -145,6 +145,28 @@ func GetFederations() []models.Federation {
 			ApiVersion:        "old",
 			TrustedProperties: "",
 		},
+		{
+			// The federation is commonly abbreviated TSH, but nuLiga serves it
+			// under the host and federation code SLH.
+			Id:                "SLH",
+			Url:               "https://slh.liga.nu/cgi-bin/WebObjects/nuLigaTENDE.woa/wa/tournamentCalendar",
+			Name:              "Tennisverband Schleswig-Holstein",
+			Geocoordinates:    models.Geocoordinates{Lat: "54.3232927", Lon: "10.1227652"},
+			State:             "Schleswig-Holstein",
+			ApiVersion:        "old",
+			TrustedProperties: "",
+		},
+		{
+			// Bavaria left nuLiga: btv.de embeds its own ZK widget, so this
+			// federation uses a dedicated client rather than a shared parser.
+			Id:                "BTV",
+			Url:               "https://btv-prod.burdadigitalsystems.de/btvtrnsearch/",
+			Name:              "Bayerischer Tennis-Verband",
+			Geocoordinates:    models.Geocoordinates{Lat: "48.1371079", Lon: "11.5753822"},
+			State:             "Bayern",
+			ApiVersion:        "btv",
+			TrustedProperties: "",
+		},
 	}
 	return federations
 }
