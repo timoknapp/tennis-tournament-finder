@@ -3,11 +3,21 @@ body {
     margin: 0;
     padding: 0;
     font-family: Roboto, Arial, sans-serif;
+    /* The map fills the screen and handles its own panning. Without this the
+       document itself scrolls behind the map, which feels like the page is
+       coming loose. */
+    overflow: hidden;
+    overscroll-behavior: none;
 }
 
 #map {
+    /* 100vw includes the scrollbar width and 100vh is larger than the visible
+       area on mobile Safari, so both caused the page to scroll. Percentages
+       track the actual viewport; dvh follows the browser chrome as it
+       collapses, with vh as the fallback for older engines. */
     height: 100vh;
-    width: 100vw;
+    height: 100dvh;
+    width: 100%;
     cursor: default;
 }
 
@@ -690,7 +700,11 @@ body {
     background-color: #f5f5f5;
     box-sizing: border-box;
     padding: 16px;
-    min-height: 100vh;
+    /* The document no longer scrolls, so the list provides its own scrolling. */
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* In the list view the sidebar must not float above the results: it moves
@@ -1415,10 +1429,18 @@ body {
     }
 
     .filterContainer {
-        /* vw/vh padding made horizontal spacing depend on screen height. */
+        /* vw/vh padding made horizontal spacing depend on screen height.
+           The rows sit inside the already-padded panel, so they only need
+           vertical rhythm; horizontal inset comes from the panel. */
         padding: 8px 0;
         margin-bottom: 0;
         min-height: 0;
+    }
+
+    /* The panel's own inset. This is the gap between the card edge and its
+       content, and it has to survive the scrollbar. */
+    .sideBarElement.filter {
+        padding: 14px 16px;
     }
 
     .submitBtn {

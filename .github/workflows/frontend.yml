@@ -41,3 +41,14 @@ jobs:
       # Date parsing and sorting cannot be verified by looking at the map.
       - name: Run frontend unit tests
         run: node script/main.test.js
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      # Layout regressions (uneven margins, accidental page scrolling) are
+      # invisible to unit tests and easy to reintroduce, so they are measured
+      # in a real browser across several phone viewports.
+      - name: Run layout tests
+        run: node script/layout.test.js
