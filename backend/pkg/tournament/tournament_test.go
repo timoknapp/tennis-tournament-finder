@@ -475,3 +475,125 @@ func TestBuildNewApiURL(t *testing.T) {
 		t.Error("buildNewApiURL() with invalid URL returned nil error")
 	}
 }
+
+func entry(comp, lk string) models.CompetitionEntry {
+	return models.CompetitionEntry{Competition: comp, SkillLevel: lk}
+}
+
+func TestFilterByLK(t *testing.T) {
+	tournaments := []models.Tournament{
+		{
+			Id: "open-to-all", Title: "Offen",
+			Entries: []models.CompetitionEntry{entry("Herren Einzel", "1,0–25,0")},
+		},
+		{
+			Id: "strong-only", Title: "Nur Starke",
+			Entries: []models.CompetitionEntry{entry("Herren Einzel", "1,0–12,0")},
+		},
+		{
+			Id: "weak-only", Title: "Nur Schwache",
+			Entries: []models.CompetitionEntry{entry("Herren Einzel", "15,0–25,0")},
+		},
+		{
+			Id: "mixed", Title: "Gemischt",
+			Entries: []models.CompetitionEntry{
+				entry("Herren Einzel", "1,0–12,0"),
+				entry("Herren 40 Einzel", "15,0–25,0"),
+				entry("Herren Doppel", "1,0–25,0"),
+			},
+		},
+	}
+
+	t.Run("strong player", func(t *testing.T) {
+		got := FilterByLK(tournaments, 5.0)
+
+		ids := make([]string, 0, len(got))
+		for _, tr := range got {
+			ids = append(ids, tr.Id)
+		}
+		want := []string{"open-to-all", "strong-only", "mixed"}
+		if len(ids) != len(want) {
+			t.Fatalf("got %v, want %v", ids, want)
+		}
+		for i := range want {
+			if ids[i] != want[i] {
+				t.Errorf("tournament %d = %q, want %q", i, ids[i], want[i])
+			}
+		}
+
+		// Only the competitions the player may enter survive.
+		mixed := got[2]
+		if len(mixed.Entries) != 2 {
+			t.Fatalf("mixed has %d entries, want 2", len(mixed.Entries))
+		}
+		for _, e := range mixed.Entries {
+			if e.Competition == "Herren 40 Einzel" {
+				t.Error("kept a competition the player cannot enter")
+			}
+		}
+	})
+
+	t.Run("weak player", func(t *testing.T) {
+		got := FilterByLK(tournaments, 20.0)
+
+		if len(got) != 3 {
+			t.Fatalf("got %d tournaments, want 3", len(got))
+		}
+		for _, tr := range got {
+			if tr.Id == "strong-only" {
+				t.Error("kept a tournament that excludes this player")
+			}
+		}
+	})
+
+	t.Run("boundaries are inclusive", func(t *testing.T) {
+		// A player at exactly the upper bound must still qualify.
+		if got := FilterByLK(tournaments, 12.0); len(got) != 3 {
+			t.Errorf("LK 12.0 matched %d tournaments, want 3 (bound is inclusive)", len(got))
+		}
+		if got := FilterByLK(tournaments, 15.0); len(got) != 3 {
+			t.Errorf("LK 15.0 matched %d tournaments, want 3 (bound is inclusive)", len(got))
+		}
+	})
+}
+
+// TestFilterByLKKeepsUnrestrictedEntries is the deliberate choice not to hide
+// tournaments whose LK range could not be parsed or was never published.
+func TestFilterByLKKeepsUnrestrictedEntries(t *testing.T) {
+	tournaments := []models.Tournament{
+		{Id: "no-lk", Entries: []models.CompetitionEntry{entry("Herren Einzel", "")}},
+		{Id: "unparseable", Entries: []models.CompetitionEntry{entry("Herren Einzel", "offen für alle")}},
+		{Id: "no-entries-at-all"},
+	}
+
+	got := FilterByLK(tournaments, 5.0)
+	if len(got) != 3 {
+		t.Fatalf("got %d tournaments, want all 3 kept", len(got))
+	}
+}
+
+func TestFilterByLKOnEmptyInput(t *testing.T) {
+	if got := FilterByLK(nil, 10); len(got) != 0 {
+		t.Errorf("got %d tournaments for nil input", len(got))
+	}
+}
+
+// TestFilterByLKDoesNotMutateInput guards against the filter corrupting the
+// cached result set, which is shared between requests.
+func TestFilterByLKDoesNotMutateInput(t *testing.T) {
+	original := []models.Tournament{
+		{
+			Id: "t1",
+			Entries: []models.CompetitionEntry{
+				entry("Herren Einzel", "1,0–12,0"),
+				entry("Herren 40 Einzel", "15,0–25,0"),
+			},
+		},
+	}
+
+	FilterByLK(original, 5.0)
+
+	if len(original[0].Entries) != 2 {
+		t.Errorf("input was mutated: %d entries remain, want 2", len(original[0].Entries))
+	}
+}

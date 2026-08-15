@@ -13,6 +13,7 @@ const vm = require('vm');
 // main.js expects a browser. Load it in a sandbox with just enough DOM for the
 // pure functions under test, and stop before the Leaflet setup runs.
 const source = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+// Everything from the list view onwards is pure logic, safe to eval.
 const listSection = source.slice(source.indexOf('// ===== List view ====='));
 
 const sandbox = {
@@ -30,7 +31,7 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(listSection, sandbox);
 
-const { parseTournamentDate, compareTournaments, escapeHtml } = sandbox;
+const { parseTournamentDate, compareTournaments, escapeHtml, isValidPlayerLK } = sandbox;
 
 let failures = 0;
 function test(name, fn) {
@@ -153,6 +154,26 @@ test('escapes quotes and ampersands', () => {
 test('handles null and undefined', () => {
     assert.strictEqual(escapeHtml(null), '');
     assert.strictEqual(escapeHtml(undefined), '');
+});
+
+console.log('isValidPlayerLK');
+
+test('accepts values across the LK scale', () => {
+    for (const v of [1, 25, 12, '12', '12.5', '12,5', ' 7 ']) {
+        assert.strictEqual(isValidPlayerLK(v), true, `should accept ${JSON.stringify(v)}`);
+    }
+});
+
+test('rejects values outside the scale', () => {
+    for (const v of [0, 0.9, 25.1, 30, -5]) {
+        assert.strictEqual(isValidPlayerLK(v), false, `should reject ${JSON.stringify(v)}`);
+    }
+});
+
+test('rejects empty and non-numeric input', () => {
+    for (const v of ['', '   ', null, undefined, 'abc', 'LK']) {
+        assert.strictEqual(isValidPlayerLK(v), false, `should reject ${JSON.stringify(v)}`);
+    }
 });
 
 if (failures > 0) {

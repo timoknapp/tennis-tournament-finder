@@ -34,7 +34,7 @@
   * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Helps you finding the tournaments around you
 * Map and list view, with the list sortable by date, title or organizer
-* Lets you filter tournaments by date, competition type, and federation
+* Lets you filter tournaments by date, competition type, federation and your own LK
 * Short link to the official Tournament at [tennis.de](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
 * PWAs (Progressive Web Apps) support. You can install the app on your phone.
@@ -133,6 +133,36 @@ Cache contents are visible at `http://127.0.0.1:9090/stats` under
 
 Enable the scheduler to keep the cache warm ahead of user traffic; it
 invalidates before fetching, so a scheduled run always retrieves current data.
+
+### LK filtering
+
+Pass `?lk=<value>` (1–25, decimal point or comma) to keep only competitions a
+player of that Leistungsklasse may enter:
+
+```
+GET /?dateFrom=01.08.2026&dateTo=15.08.2026&lk=12.5
+```
+
+Federations publish the LK range as free text in several formats, all handled
+by `pkg/skilllevel`:
+
+```
+"1,0–25,0"     en dash, decimal comma  (most common)
+"LK 1-25"      prefix, hyphen, integers
+"LK 1.5-25"    decimal point
+"12,6–25,0"    fractional bounds
+""             no restriction published
+```
+
+Two deliberate choices:
+
+* **Competitions without a parseable range are kept.** A competition that does
+  not publish a restriction is open, and hiding it would lose real tournaments.
+* **Filtering runs after the cache lookup**, so every player LK shares one
+  cached federation result instead of multiplying cache entries.
+
+An invalid `lk` value is ignored rather than rejected, so a typo still returns
+results.
 
 ### API response format
 

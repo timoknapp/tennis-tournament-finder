@@ -114,11 +114,11 @@ let currentTournaments = [];
 let markerById = new Map();
 let currentView = 'map';
 
-function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
+function getTournamentsByDate(dateFrom, dateTo, compType, federations, playerLK) {
     if (dateFrom != "" && dateTo != "") {
         dateFrom = formatDateToAPI(dateFrom);
         dateTo = formatDateToAPI(dateTo);
-        getTournaments(dateFrom, dateTo, compType, federations)
+        getTournaments(dateFrom, dateTo, compType, federations, playerLK)
         .then(response => {
             const tournaments = response.tournaments || [];
             renderDataNotice(response, tournaments.length);
@@ -179,7 +179,7 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
     }
 }
 
-async function getTournaments(dateFrom, dateTo, compType, federations) {
+async function getTournaments(dateFrom, dateTo, compType, federations, playerLK) {
     showSpinner();
     let url = urlBackend + `?dateFrom=${dateFrom}&dateTo=${dateTo}&format=full`;
     if (compType && compType !== "") {
@@ -187,6 +187,11 @@ async function getTournaments(dateFrom, dateTo, compType, federations) {
     }
     if (federations && federations.length > 0) {
         url += `&federations=${encodeURIComponent(federations.join(','))}`;
+    }
+    // The backend ignores an unparseable value, but filtering here too avoids
+    // a pointless round trip for obvious typos.
+    if (isValidPlayerLK(playerLK)) {
+        url += `&lk=${encodeURIComponent(String(playerLK).replace(',', '.'))}`;
     }
     return fetch(url)
         .then(res => {
@@ -614,4 +619,16 @@ function setView(view) {
         // resized, so the map has to be told its size changed.
         setTimeout(() => map.invalidateSize(), 0);
     }
+}
+
+// isValidPlayerLK reports whether a value looks like a German LK.
+//
+// The scale runs from 1.0 (best) to 25.0 (beginner). Both decimal separators
+// are accepted because German keyboards produce a comma.
+function isValidPlayerLK(value) {
+    if (value === null || value === undefined || String(value).trim() === '') {
+        return false;
+    }
+    const parsed = parseFloat(String(value).replace(',', '.'));
+    return !isNaN(parsed) && parsed >= 1 && parsed <= 25;
 }
