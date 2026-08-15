@@ -157,10 +157,16 @@ const VIEWPORTS = [
     for (const [name, width, height] of VIEWPORTS) {
         console.log(`\n[${engine}] ${name} (${width}x${height})`);
 
-        // WebKitGTK rejects the mobile emulation flags Chromium accepts.
-        const page = await browser.newPage(engine === 'webkit'
-            ? { viewport: { width, height }, hasTouch: true }
-            : { viewport: { width, height }, isMobile: true, hasTouch: true });
+        // A fresh context per viewport. browser.newPage() reuses the default
+        // context, so the service worker registered by one run served cached
+        // responses to the next; under WebKit that produced failures which
+        // accumulated across viewports and looked like flakiness.
+        //
+        // WebKitGTK also rejects the mobile emulation flags Chromium accepts.
+        const context = await browser.newContext(engine === 'webkit'
+            ? { viewport: { width, height }, hasTouch: true, serviceWorkers: 'block' }
+            : { viewport: { width, height }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+        const page = await context.newPage();
         await page.route('**/ttf**', r =>
             r.fulfill({ status: 200, contentType: 'application/json', body: RESPONSE }));
         await page.route('**tile**', r =>
@@ -189,8 +195,21 @@ const VIEWPORTS = [
             () => getComputedStyle(document.getElementById('filterContainer')).display);
 
         // The filter action moved out of the title row into its own control.
+        //
+        // The panel must be closed before this taps to open it. The initial
+        // load renders asynchronously, and on a slow run the auto-close had not
+        // yet applied when the tap landed, so the tap closed the panel instead
+        // and every following assertion failed. Waiting for the known start
+        // state removes the race rather than papering over it with a delay.
+        await page.waitForFunction(
+            () => getComputedStyle(document.getElementById('filterContainer')).display === 'none',
+            null, { timeout: 5000 }).catch(() => {});
+
         await page.click('#filterFab', { force: true });
-        await page.waitForTimeout(350);
+        await page.waitForFunction(
+            () => getComputedStyle(document.getElementById('filterContainer')).display !== 'none',
+            null, { timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(200);
         const filterAfterFirstTap = await page.evaluate(
             () => getComputedStyle(document.getElementById('filterContainer')).display);
 
@@ -199,12 +218,80 @@ const VIEWPORTS = [
             const rect = panel.getBoundingClientRect();
             const scrim = document.getElementById('sheetScrim');
             const fab = document.getElementById('filterFab');
+
+            // Visibility is not usability: the sheet was fully rendered while
+            // the scrim sat on top of it and swallowed every tap. Only
+            // elementFromPoint reveals that.
+            const unreachable = [];
+            let probed = 0;
+            ['#dateFrom', '#dateTo', '#compType', '#playerLK', '.sheetDone', '.checkboxLabel']
+                .forEach(sel => {
+                    const el = document.querySelector(sel);
+                    if (!el) return;
+                    const b = el.getBoundingClientRect();
+                    // Off-screen controls cannot be probed, but they must not
+                    // silently reduce this to a no-op either: `probed` is
+                    // asserted separately.
+                    if (!b.width || b.top < 0 || b.bottom > window.innerHeight) return;
+                    probed++;
+                    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+                    // A label wrapping its input counts as reached; an overlay
+                    // in front of it does not.
+                    if (!(hit === el || el.contains(hit))) {
+                        unreachable.push(`${sel} blocked by ${(hit && (hit.id || hit.className)) || 'nothing'}`);
+                    }
+                });
+
+            // The tab bar must not float above the sheet that covers it.
+            const tabbar = document.querySelector('.viewToggle').getBoundingClientRect();
+            const atTabbar = document.elementFromPoint(tabbar.left + 40, tabbar.top + tabbar.height / 2);
+            const tabbarOnTop = !!(atTabbar && atTabbar.nodeType === 1 && atTabbar.closest('.viewToggle'));
+
             return {
                 topGap: Math.round(rect.top),
                 scrimShown: scrim ? !scrim.hidden : false,
                 fabHidden: getComputedStyle(fab).display === 'none',
                 doneVisible: !!document.querySelector('.sheetDone'),
+                unreachable,
+                probed,
+                tabbarOnTop,
             };
+        });
+
+        check('sheet controls actually receive taps', () => {
+            // .sideBar carries a z-index, making it a stacking context: its
+            // children cannot paint above a sibling scrim however high their
+            // own z-index. Every control was rendered and visible but dead,
+            // which is why a visibility-only assertion missed it.
+            //
+            // The probe count is asserted too: if the sheet fails to open, its
+            // controls fall outside the viewport and this would otherwise pass
+            // by examining nothing.
+            assert.ok(sheet.probed >= 3,
+                `only ${sheet.probed} control(s) on screen; the sheet did not open`);
+            assert.strictEqual(sheet.unreachable.length, 0,
+                `unreachable: ${sheet.unreachable.join('; ')}`);
+        });
+
+        check('tab bar does not float above the open sheet', () => {
+            assert.ok(!sheet.tabbarOnTop,
+                'the tab bar paints over the sheet that covers it');
+        });
+
+        check('open sheet leaves the map visible above it', () => {
+            // A sheet filling the screen is a full-page takeover; keeping the
+            // map in view is what makes filtering feel in-context.
+            assert.ok(sheet.topGap > 40,
+                `sheet starts ${sheet.topGap}px from the top, covering the view`);
+        });
+
+        check('sheet dims the map and offers a way out', () => {
+            assert.ok(sheet.scrimShown, 'scrim should be shown behind the sheet');
+            assert.ok(sheet.doneVisible, 'sheet needs its own dismiss control');
+        });
+
+        check('filter button hides while its sheet is open', () => {
+            assert.ok(sheet.fabHidden, 'the filter button overlaps the open sheet');
         });
 
         await page.evaluate(() => {
@@ -353,6 +440,9 @@ const VIEWPORTS = [
                 toggleWidth: toggle.width,
                 toggleBottomGap: Math.round(window.innerHeight - toggle.bottom),
                 smallestTab: Math.min(...tabs.map(t => t.getBoundingClientRect().height)),
+                tabHeight: tabs[0].getBoundingClientRect().height,
+                iconSize: (document.querySelector('.tabIcon') || { getBoundingClientRect: () => ({ height: 0 }) })
+                    .getBoundingClientRect().height,
                 viewportWidth: window.innerWidth,
                 panelBottom: panel.bottom,
                 toggleTop: toggle.top,
@@ -380,6 +470,16 @@ const VIEWPORTS = [
         check('tabs are large enough to hit', () => {
             assert.ok(controls.smallestTab >= 44,
                 `smallest tab is ${Math.round(controls.smallestTab)}px tall`);
+        });
+
+        check('tab bar uses native metrics', () => {
+            // iOS tab bars are 49pt with the home indicator area added below,
+            // not padded inside. A taller bar reads as a web page imitating an
+            // app, and leaves a dead gap under the labels.
+            assert.ok(controls.tabHeight <= 52,
+                `tabs are ${Math.round(controls.tabHeight)}px tall, above the 49pt platform metric`);
+            assert.ok(controls.iconSize >= 24 && controls.iconSize <= 28,
+                `tab icons are ${Math.round(controls.iconSize)}px, outside the 25pt convention`);
         });
 
         check('open panel fits the visible viewport', () => {
@@ -461,6 +561,7 @@ const VIEWPORTS = [
         });
 
         await page.close();
+        await context.close();
     }
     await browser.close();
     }

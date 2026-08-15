@@ -446,12 +446,20 @@ function toggleFilters() {
 function syncFilterSheet(isOpen) {
     const scrim = document.getElementById('sheetScrim');
     const fab = document.getElementById('filterFab');
+    const sideBar = document.querySelector('.sideBar');
 
     if (scrim) {
         scrim.hidden = !isOpen;
     }
     if (fab) {
         fab.setAttribute('aria-expanded', String(isOpen));
+    }
+    // .sideBar has a z-index of its own, which makes it a stacking context: the
+    // sheet inside it cannot paint above the scrim no matter what z-index the
+    // sheet is given. Raising the whole sidebar is what actually lifts it.
+    // Mirrors the :has() rule for engines that lack it.
+    if (sideBar) {
+        sideBar.classList.toggle('sheet-open', isOpen);
     }
 }
 
