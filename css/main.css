@@ -1709,6 +1709,15 @@ body.list-mode .filter {
        that the action has its own control near the thumb. */
     .filterToggleBtn { display: none; }
 
+    /* With that button gone the row holds one item, but space-between still
+       pushed it to the left edge as though something sat opposite it. On a
+       phone the app name is the only thing in the bar, so it is centred like a
+       native navigation title. */
+    .sideBar .title {
+        justify-content: center;
+        text-align: center;
+    }
+
     /* Anything floating over a scrolling list eventually sits on top of a link
        in it; measured against the real list, it covered "Auf Karte zeigen".
        The map needs a floating control because it has no header to put one in,

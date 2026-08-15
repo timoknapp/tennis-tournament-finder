@@ -440,6 +440,16 @@ const VIEWPORTS = [
             const tabs = [...document.querySelectorAll('.viewToggleBtn')];
             return {
                 zoomButtons: document.querySelectorAll('.leaflet-control-zoom').length,
+                titleCentre: (() => {
+                    const title = document.querySelector('.sideBarElement.title');
+                    // Measure the text node: the row spans the full width, so
+                    // its own box says nothing about where the words sit.
+                    const range = document.createRange();
+                    range.setStart(title.firstChild, 0);
+                    range.setEnd(title.firstChild, title.firstChild.length);
+                    const box = range.getBoundingClientRect();
+                    return (box.left + box.right) / 2;
+                })(),
                 toggleRole: document.querySelector('.viewToggle').getAttribute('role'),
                 toggleWidth: toggle.width,
                 toggleBottomGap: Math.round(window.innerHeight - toggle.bottom),
@@ -454,6 +464,15 @@ const VIEWPORTS = [
                 toggleTop: toggle.top,
                 viewportHeight: window.innerHeight,
             };
+        });
+
+        check('header title is centred', () => {
+            // The row keeps space-between for the desktop layout, where a
+            // filter button sits opposite the title. That button is hidden on a
+            // phone, so the title was pushed to the left edge as though
+            // something still sat across from it.
+            const off = Math.abs(controls.titleCentre - controls.viewportWidth / 2);
+            assert.ok(off <= 4, `title is ${off.toFixed(0)}px off centre`);
         });
 
         check('map has no zoom buttons', () => {
