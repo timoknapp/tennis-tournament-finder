@@ -207,6 +207,63 @@ const VIEWPORTS = [
                 `label starts ${panel.labelInset}px inside the padding box`);
         });
 
+        const fields = await page.evaluate(() => {
+            const ids = ['dateFrom', 'dateTo', 'compType', 'playerLK'];
+            const boxes = ids.map(id => {
+                const el = document.getElementById(id);
+                const r = el.getBoundingClientRect();
+                const cs = getComputedStyle(el);
+                return {
+                    id, width: r.width, left: r.left, right: r.right,
+                    appearance: cs.webkitAppearance || cs.appearance,
+                    fontSize: parseFloat(cs.fontSize),
+                };
+            });
+            const submit = document.querySelector('.submitBtn').getBoundingClientRect();
+            return { boxes, submitWidth: submit.width };
+        });
+
+        check('all form fields are the same width', () => {
+            // Safari sizes date inputs from their native control rather than
+            // the author's box model, so they render wider than the select and
+            // text input beside them and push the panel into scrolling.
+            const widths = fields.boxes.map(b => b.width);
+            const spread = Math.max(...widths) - Math.min(...widths);
+            const detail = fields.boxes.map(b => `${b.id}=${Math.round(b.width)}`).join(' ');
+            assert.ok(spread <= 1, `widths differ by ${spread.toFixed(1)}px (${detail})`);
+        });
+
+        check('form fields share both edges', () => {
+            const lefts = fields.boxes.map(b => b.left);
+            const rights = fields.boxes.map(b => b.right);
+            assert.ok(Math.max(...lefts) - Math.min(...lefts) <= 1, 'left edges must line up');
+            assert.ok(Math.max(...rights) - Math.min(...rights) <= 1, 'right edges must line up');
+        });
+
+        check('submit button matches the field width', () => {
+            const width = fields.boxes[0].width;
+            assert.ok(Math.abs(fields.submitWidth - width) <= 1,
+                `button ${Math.round(fields.submitWidth)}px vs field ${Math.round(width)}px`);
+        });
+
+        check('native control appearance is reset', () => {
+            // Without this the browser imposes its own sizing, which is how the
+            // widths diverged on iOS while looking correct in Chromium.
+            for (const box of fields.boxes) {
+                assert.strictEqual(box.appearance, 'none',
+                    `${box.id} has appearance: ${box.appearance}`);
+            }
+        });
+
+        check('fields are large enough not to trigger iOS focus zoom', () => {
+            // Safari zooms the page when a field with a font-size below 16px
+            // gains focus, leaving the layout shifted afterwards.
+            for (const box of fields.boxes) {
+                assert.ok(box.fontSize >= 16,
+                    `${box.id} font-size is ${box.fontSize}px, below the 16px threshold`);
+            }
+        });
+
         check('chips end flush on both sides', () => {
             assert.ok(Math.abs(panel.chipLeft - panel.chipRight) <= 4,
                 `chip row inset left ${panel.chipLeft}px vs right ${panel.chipRight}px`);
