@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <!-- <meta
-      charset="UTF-8"
-      name="viewport"
-      content="initial-scale=1,user-scalable=no,viewport-fit=cover"
-    /> -->
+    <meta charset="UTF-8" />
+    <!-- A single element cannot carry both charset and name: the browser reads
+         the charset and discards the viewport declaration, which is why the
+         page could be zoomed and scrolled on phones.
+         viewport-fit=cover lets the layout extend into the safe areas, which
+         are then handled with env(safe-area-inset-*) in CSS. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-13pro.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 482px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-13promax.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-14pro.png" />
