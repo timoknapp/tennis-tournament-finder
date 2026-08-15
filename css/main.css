@@ -1372,3 +1372,66 @@ body {
 .ttf-cluster:hover {
     transform: scale(1.06);
 }
+
+/* ---------- Mobile filter panel geometry ----------
+
+   Two long-standing issues made the panel look off-centre on phones:
+
+   1. The 45px offset that keeps the panel clear of the Leaflet zoom
+      controls was applied twice: once as .sideBar's left position, and
+      again in .sideBarElement's width. The panel therefore ended 45px
+      short on the right while sitting 45px from the left, so the two
+      margins never matched.
+
+   2. Horizontal padding used vh units (1.5vh, 1vh), which derive from the
+      viewport *height*. Left/right spacing consequently changed with the
+      device's aspect ratio instead of staying constant.
+
+   Measured before: content sat at 86px from the left and 70px from the
+   right on a 390px viewport. */
+
+@media (max-width: 768px) {
+    .sideBar {
+        /* The panel clears the Leaflet zoom controls on the left, so the same
+           gap is mirrored on the right; otherwise the card looks pushed off
+           to one side. The offset is owned by the container alone. */
+        left: 12px;
+        width: calc(100% - 24px);
+        box-sizing: border-box;
+    }
+
+    /* The title row starts below the zoom controls, so the panel no longer
+       has to dodge them horizontally. The base rule adds an 8px left margin
+       for the desktop layout, which would push the card off-centre here. */
+    .sideBar .title {
+        margin: 52px 0 10px 0;
+    }
+
+    .sideBarElement {
+        /* Fill the container instead of subtracting the offset a second time. */
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+    }
+
+    .filterContainer {
+        /* vw/vh padding made horizontal spacing depend on screen height. */
+        padding: 8px 0;
+        margin-bottom: 0;
+        min-height: 0;
+    }
+
+    .submitBtn {
+        /* A percentage width left uneven side margins inside a padded box. */
+        width: 100%;
+        font-size: 3.9vw;
+    }
+
+    .filter {
+        /* .filter carries left: 8px for the desktop map layout, which shifts
+           the whole panel out of its container on mobile. */
+        left: 0;
+        /* Equal padding on both sides; the scrollbar sits inside it. */
+        padding: 12px 14px;
+    }
+}
