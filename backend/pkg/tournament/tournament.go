@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/btv"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/federation"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/httpclient"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
@@ -381,9 +382,33 @@ func fetchFederation(ctx context.Context, fed models.Federation, dateFrom, dateT
 		return getTournamentsFromFederationOldApi(ctx, fed, dateFrom, dateTo, compType)
 	case "new":
 		return getTournamentsFromFederationNewApi(ctx, fed, dateFrom, dateTo, compType)
+	case "btv":
+		// Bavaria runs its own ZK widget rather than nuLiga.
+		return getTournamentsFromBTV(ctx, fed)
 	default:
 		return nil, fmt.Errorf("unknown API version %q for federation %s", fed.ApiVersion, fed.Id)
 	}
+}
+
+// getTournamentsFromBTV fetches and geocodes the Bavarian tournament list.
+func getTournamentsFromBTV(ctx context.Context, fed models.Federation) ([]models.Tournament, error) {
+	logger.Info("Get Tournaments in: %s (BTV widget)", fed.Id)
+
+	tournaments, err := btv.New(fed.Url).GetTournaments(ctx, fed)
+	if err != nil {
+		return nil, err
+	}
+
+	// The widget supplies a venue city but no coordinates.
+	for i := range tournaments {
+		geoCoords := resolveGeocoordinates(fed, tournaments[i], defaultGeocoder, tournaments[i].Location)
+		tournaments[i].Lat = geoCoords.Lat
+		tournaments[i].Lon = geoCoords.Lon
+	}
+
+	logger.Info("Federation %s: Found %d tournaments total", fed.Id, len(tournaments))
+
+	return tournaments, nil
 }
 
 // ageCategoryForCompType maps a competition type to the new API's age category.
