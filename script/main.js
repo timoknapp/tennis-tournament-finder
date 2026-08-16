@@ -9,7 +9,17 @@ let map = L.map('map', {
   zoomControl: false
 }).setView([51.133481, 10.018343], 7);
 window.map = map; // expose map for gesture script
-L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+// Humanitarian OSM tiles. https rather than http: the page is served over TLS,
+// so http tiles are mixed content. Browsers currently upgrade them silently,
+// but that is a courtesy, not a guarantee, and it logs a warning for every
+// tile. The host answers https directly; the http URL only 301s to it.
+//
+// The attribution is a licence requirement, not decoration: OSM data is ODbL,
+// which obliges visible credit.
+L.tileLayer('https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ' +
+    'tiles courtesy of <a href="https://www.hotosm.org/">Humanitarian OpenStreetMap Team</a>',
+  maxZoom: 19,
   updateWhenZooming: true,   // fetch tiles during zoom animation
   keepBuffer: 3              // keep extra tiles around to reduce visible loads
 }).addTo(map);
