@@ -250,3 +250,56 @@ func TestOverrideNotesAreDocumented(t *testing.T) {
 		check(o)
 	}
 }
+
+// TestOverridesForReportedClubs pins the entries added after a live sweep found
+// them falling back to their federation's default pin. Each name here was
+// observed in production data, so a regression in matching would put real
+// tournaments back in the middle of a state.
+func TestOverridesForReportedClubs(t *testing.T) {
+	table, err := Default()
+	if err != nil {
+		t.Fatalf("loading the default table failed: %v", err)
+	}
+
+	cases := []struct {
+		organizer string
+		wantCity  string
+	}{
+		{"Tus Berne e.V. Tennisabteilung", "Hamburg"},
+		{"Tennisclub Ellerbek e.V.", "Ellerbek"},
+		{"ETUF Tennisriege", "Essen"},
+		{"TSV Neuenkirchen (SFA)", "Neuenkirchen"},
+		{"Tennisclub am Falkenberg", "Norderstedt"},
+		{"Gemünden", "Gemünden am Main"},
+		{"TC Viktoria", "Köln"},
+	}
+
+	for _, tc := range cases {
+		override, ok := table.Lookup(tc.organizer)
+		if !ok {
+			t.Errorf("%q has no override; it will fall back to the federation default", tc.organizer)
+			continue
+		}
+		if override.City != tc.wantCity {
+			t.Errorf("%q resolved to %q, want %q", tc.organizer, override.City, tc.wantCity)
+		}
+	}
+}
+
+// TestAmbiguousNamesAreNotGuessed guards a decision rather than behaviour.
+//
+// "Neustadt" was reported by the same sweep, but Bavaria has several: Neustadt
+// an der Aisch, Neustadt an der Donau and Neustadt bei Coburg all match. A
+// wrong pin is worse than an obvious fallback, because it looks resolved, so
+// the entry was deliberately left out until the actual club is known.
+func TestAmbiguousNamesAreNotGuessed(t *testing.T) {
+	table, err := Default()
+	if err != nil {
+		t.Fatalf("loading the default table failed: %v", err)
+	}
+
+	if override, ok := table.Lookup("Neustadt"); ok {
+		t.Errorf("an override for the ambiguous name Neustadt was added (city %q); "+
+			"confirm which Neustadt the club plays in first", override.City)
+	}
+}
