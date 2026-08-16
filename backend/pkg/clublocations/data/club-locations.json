@@ -57,6 +57,48 @@
       "city": "Sankt Leon-Rot",
       "state": "Baden-Württemberg",
       "note": "The club name carries the district 'Rot' only; the municipality is Sankt Leon-Rot, so nothing usable can be derived from the name."
+    },
+    {
+      "contains": "Tus Berne",
+      "city": "Hamburg",
+      "state": "Hamburg",
+      "note": "Berne is a district of Hamburg; the club's courts are at Alter Berner Weg, Sasel. The name reads as the Lower Saxony municipality Berne otherwise."
+    },
+    {
+      "contains": "Tennisclub Ellerbek",
+      "city": "Ellerbek",
+      "state": "Schleswig-Holstein",
+      "note": "Ellerbek in Kreis Pinneberg, confirmed by the club's address at Dubenhorst 7. There is also an Ellerbek district in Kiel."
+    },
+    {
+      "contains": "ETUF",
+      "city": "Essen",
+      "state": "Nordrhein-Westfalen",
+      "note": "ETUF is the Essener Turn- und Fechtclub; the abbreviation carries no place name at all."
+    },
+    {
+      "contains": "TSV Neuenkirchen",
+      "city": "Neuenkirchen",
+      "state": "Niedersachsen",
+      "note": "The '(SFA)' suffix is the old Soltau-Fallingbostel district, now Heidekreis. Several places are called Neuenkirchen, so the state alone is not enough."
+    },
+    {
+      "contains": "Tennisclub am Falkenberg",
+      "city": "Norderstedt",
+      "state": "Schleswig-Holstein",
+      "note": "Falkenberg is the neighbourhood, not the municipality: the club is at Am Exerzierplatz 30 in Norderstedt. Geocoding the name lands 100km away near Schleswig."
+    },
+    {
+      "contains": "Gemünden",
+      "city": "Gemünden am Main",
+      "state": "Bayern",
+      "note": "Several places are called Gemünden; the Bavarian tennis one is Gemünden am Main."
+    },
+    {
+      "contains": "TC Viktoria",
+      "city": "Köln",
+      "state": "Nordrhein-Westfalen",
+      "note": "TVM covers Köln and the club there is Tennisclub Viktoria Köln (Höhenberger Ring). Note a Tennisclub FC Viktoria 09 also exists in St. Ingbert, Saarland, so this entry is federation-specific."
     }
   ]
 }

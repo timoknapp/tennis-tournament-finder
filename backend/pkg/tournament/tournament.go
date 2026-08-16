@@ -403,9 +403,10 @@ func getTournamentsFromBTV(ctx context.Context, fed models.Federation) ([]models
 
 	// The widget supplies a venue city but no coordinates.
 	for i := range tournaments {
-		geoCoords := resolveGeocoordinates(fed, tournaments[i], defaultGeocoder, tournaments[i].Location)
+		geoCoords, approximate := resolveGeocoordinates(fed, tournaments[i], defaultGeocoder, tournaments[i].Location)
 		tournaments[i].Lat = geoCoords.Lat
 		tournaments[i].Lon = geoCoords.Lon
+		tournaments[i].ApproximateLocation = approximate
 	}
 
 	logger.Info("Federation %s: Found %d tournaments total", fed.Id, len(tournaments))
@@ -612,8 +613,10 @@ func (l *limitedReadCloser) Read(p []byte) (int, error) { return l.reader.Read(p
 func (l *limitedReadCloser) Close() error               { return l.closer.Close() }
 
 // resolveGeocoordinates looks up coordinates and falls back to the federation
-// default when nothing suitable is found.
-func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, geocode geocoder, subject string) models.Geocoordinates {
+// default when nothing suitable is found. The second return value reports
+// whether that fallback was used, which callers cannot work out from the
+// coordinates alone: several federation defaults sit exactly on a major city.
+func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, geocode geocoder, subject string) (models.Geocoordinates, bool) {
 	if geocode == nil {
 		geocode = defaultGeocoder
 	}
@@ -627,10 +630,10 @@ func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, 
 		// /stats/unresolved-clubs instead of waiting for a user to report it.
 		unresolved.Record(tournament.Organizer, fed.Id, fed.State,
 			placename.Candidates(tournament.Organizer))
-		return fed.Geocoordinates
+		return fed.Geocoordinates, true
 	}
 
-	return geoCoords
+	return geoCoords, false
 }
 
 // ParseNewApiDocument parses one page of the new API's HTML into tournaments.
@@ -723,9 +726,10 @@ func ParseNewApiDocument(r io.Reader, fed models.Federation, geocode geocoder) (
 
 				// Get geocoordinates if we have a location
 				if tournament.Location != "" {
-					geoCoords := resolveGeocoordinates(fed, tournament, geocode, tournament.Location)
+					geoCoords, approximate := resolveGeocoordinates(fed, tournament, geocode, tournament.Location)
 					tournament.Lat = geoCoords.Lat
 					tournament.Lon = geoCoords.Lon
+					tournament.ApproximateLocation = approximate
 				} else {
 					logger.Warn("Tournament location missing: %s ; Date: %s", tournament.Title, tournament.Date)
 				}
@@ -861,9 +865,10 @@ func ParseOldApiDocument(r io.Reader, fed models.Federation, geocode geocoder) (
 					if len(tournament.Title) > 0 {
 						tournament.Organizer = extractOldApiOrganizer(columnTournament, tournament)
 
-						geoCoords := resolveGeocoordinates(fed, tournament, geocode, tournament.Organizer)
+						geoCoords, approximate := resolveGeocoordinates(fed, tournament, geocode, tournament.Organizer)
 						tournament.Lat = geoCoords.Lat
 						tournament.Lon = geoCoords.Lon
+						tournament.ApproximateLocation = approximate
 					}
 				case 2: // Competition (Konkurrenz)
 					currentEntry.Competition = value

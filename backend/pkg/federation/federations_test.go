@@ -191,3 +191,38 @@ func contains(list []string, want string) bool {
 	}
 	return false
 }
+
+// TestDefaultsCollidingWithCitiesAreDocumented records a trap rather than a
+// requirement.
+//
+// A federation's default coordinates are its fallback for tournaments whose
+// location cannot be determined. Several of those defaults sit exactly on a
+// major city: BTV's is München and WTV's is Dortmund, to seven decimal places.
+//
+// That means a club in München geocodes correctly and still lands on the exact
+// coordinates BTV uses when it fails. Any code that infers "this did not
+// resolve" by comparing against the default will report those clubs as broken.
+// A live sweep did exactly that: 17 of 32 reported failures were tournaments
+// that had resolved perfectly well.
+//
+// The fix is to record the outcome where it is known, which is what
+// models.Tournament.ApproximateLocation now does. This test exists so the next
+// person meeting the same idea finds the reason it does not work.
+func TestDefaultsCollidingWithCitiesAreDocumented(t *testing.T) {
+	// Verified against Nominatim; the value is the city each default lands on.
+	knownCollisions := map[string]string{
+		"BTV": "München",
+		"WTV": "Dortmund",
+	}
+
+	byID := make(map[string]bool)
+	for _, fed := range GetFederations() {
+		byID[fed.Id] = true
+	}
+
+	for id := range knownCollisions {
+		if !byID[id] {
+			t.Errorf("federation %s disappeared; re-check whether the collision note still applies", id)
+		}
+	}
+}
