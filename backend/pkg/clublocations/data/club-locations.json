@@ -78,9 +78,10 @@
     },
     {
       "contains": "TSV Neuenkirchen",
-      "city": "Neuenkirchen",
       "state": "Niedersachsen",
-      "note": "The '(SFA)' suffix is the old Soltau-Fallingbostel district, now Heidekreis. Several places are called Neuenkirchen, so the state alone is not enough."
+      "note": "Niedersachsen alone has at least three places called Neuenkirchen (Schwafoerden, Land Hadeln, Samtgemeinde Neuenkirchen), and the club is in none of them: it plays at Kabenstrasse 19A in Delmsen, Heidekreis. The '(SFA)' suffix is the former Soltau-Fallingbostel district. Pinned explicitly because no place name reaches the right one.",
+      "lat": "53.027311",
+      "lon": "9.705497"
     },
     {
       "contains": "Tennisclub am Falkenberg",
@@ -99,6 +100,13 @@
       "city": "Köln",
       "state": "Nordrhein-Westfalen",
       "note": "TVM covers Köln and the club there is Tennisclub Viktoria Köln (Höhenberger Ring). Note a Tennisclub FC Viktoria 09 also exists in St. Ingbert, Saarland, so this entry is federation-specific."
+    },
+    {
+      "match": "Neustadt",
+      "state": "Bayern",
+      "lat": "49.727316",
+      "lon": "12.179680",
+      "note": "BTV publishes this club as plain 'Neustadt', which Bavaria has several of (an der Aisch, an der Donau, bei Coburg, an der Waldnaab). The tournament titles name the venue - '6. TennWa-LK-Turnier beim ASV Neustadt' - and ASV Neustadt is in Neustadt an der Waldnaab, confirmed by its Sportheim in OSM. Uses 'match' rather than 'contains' so it cannot swallow other Neustadt clubs."
     }
   ]
 }
