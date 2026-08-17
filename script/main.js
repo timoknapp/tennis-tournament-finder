@@ -130,6 +130,10 @@ function registerMapFilterAutoClose() {
 // Tournaments from the most recent search, shared by the map and list views so
 // both always show the same data.
 let currentTournaments = [];
+// The point distances are measured from, once the user asks for it. Held in
+// memory only: the issue is explicit that location must not be persisted, and
+// a stored coordinate would also go stale the moment someone travels.
+let distanceOrigin = null;
 // Marker instances keyed by tournament id, so the list can open the matching
 // popup on the map.
 let markerById = new Map();
@@ -149,59 +153,76 @@ function getTournamentsByDate(dateFrom, dateTo, compType, federations, playerLK)
             renderDataNotice(response, tournaments.length);
 
             currentTournaments = tournaments;
-            markerById = new Map();
-
-            map.removeLayer(markers);
-            markers = createMarkerClusterGroup();
-            for (const tournament of tournaments) {
-                // Process competition entries for display
-                let competitionDetails = "";
-                
-                if (tournament.entries && tournament.entries.length > 0) {
-                    // Create detailed competition list
-                    const validEntries = tournament.entries.filter(entry => 
-                        entry.competition || (entry.skill_level && entry.skill_level.trim() !== ""));
-                    
-                    if (validEntries.length > 0) {
-                        competitionDetails = `
-                        <div id="comp-details-${tournament.id}" style="display: none; max-height: 150px; overflow-y: auto; margin-top: 5px; padding: 5px; background-color: #f9f9f9; border-radius: 3px;">
-                            <table style="width: 100%; font-size: 12px;">
-                                <tr style="font-weight: bold;"><td>Konkurrenz</td><td>LK</td></tr>
-                                ${validEntries.map(entry => `
-                                    <tr>
-                                        <td style="padding: 2px;">${entry.competition || "-"}</td>
-                                        <td style="padding: 2px;">${entry.skill_level || "-"}</td>
-                                    </tr>
-                                `).join("")}
-                            </table>
-                        </div>
-                        <a href="#" onclick="toggleCompetitionDetails('${tournament.id}'); return false;" class="popup-info-text" style="color: #0066cc; text-decoration: none;">
-                            <span id="toggle-text-${tournament.id}">▼ Konkurrenzen anzeigen (${validEntries.length} Einträge)</span>
-                        </a>`;
-                    }
-                }
-
-                const marker = L.marker([tournament["lat"], tournament["lon"]], { icon: tournamentIcon() })
-                .bindPopup(`
-                <span class="popupTitle">${tournament["title"]}</span><br><br>
-                <div class="popup-info-text">
-                    <b>Datum:</b> ${tournament["date"]}<br>
-                    <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br>
-                </div>
-                <div class="button-container">
-                    <a href="${tournament["url"]}" target="_blank" class="signup-button">Anmelden</a>
-                </div>
-                ${competitionDetails}
-                `)
-                markers.addLayer(marker);
-                if (tournament["id"]) {
-                    markerById.set(String(tournament["id"]), marker);
-                }
+            // Distances are per-search: a tournament list without them would
+            // keep stale values from the previous query.
+            for (const tournament of currentTournaments) {
+                tournament._distanceKm = tournamentDistanceKm(tournament, distanceOrigin);
             }
-            map.addLayer(markers);
+
+            renderTournaments();
             renderTournamentList();
         });
     }
+}
+
+// renderTournaments draws the markers for whatever is currently visible.
+//
+// Split out of the fetch so the radius filter can redraw without re-querying:
+// the backend never learns the user's position, which is what keeps it in the
+// browser.
+function renderTournaments() {
+    const tournaments = visibleTournaments();
+
+    markerById = new Map();
+    map.removeLayer(markers);
+    markers = createMarkerClusterGroup();
+
+    for (const tournament of tournaments) {
+        // Process competition entries for display
+        let competitionDetails = "";
+        
+        if (tournament.entries && tournament.entries.length > 0) {
+            // Create detailed competition list
+            const validEntries = tournament.entries.filter(entry => 
+                entry.competition || (entry.skill_level && entry.skill_level.trim() !== ""));
+            
+            if (validEntries.length > 0) {
+                competitionDetails = `
+                <div id="comp-details-${tournament.id}" style="display: none; max-height: 150px; overflow-y: auto; margin-top: 5px; padding: 5px; background-color: #f9f9f9; border-radius: 3px;">
+                    <table style="width: 100%; font-size: 12px;">
+                        <tr style="font-weight: bold;"><td>Konkurrenz</td><td>LK</td></tr>
+                        ${validEntries.map(entry => `
+                            <tr>
+                                <td style="padding: 2px;">${entry.competition || "-"}</td>
+                                <td style="padding: 2px;">${entry.skill_level || "-"}</td>
+                            </tr>
+                        `).join("")}
+                    </table>
+                </div>
+                <a href="#" onclick="toggleCompetitionDetails('${tournament.id}'); return false;" class="popup-info-text" style="color: #0066cc; text-decoration: none;">
+                    <span id="toggle-text-${tournament.id}">▼ Konkurrenzen anzeigen (${validEntries.length} Einträge)</span>
+                </a>`;
+            }
+        }
+
+        const marker = L.marker([tournament["lat"], tournament["lon"]], { icon: tournamentIcon() })
+        .bindPopup(`
+        <span class="popupTitle">${tournament["title"]}</span><br><br>
+        <div class="popup-info-text">
+            <b>Datum:</b> ${tournament["date"]}<br>
+            <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br>
+        </div>
+        <div class="button-container">
+            <a href="${tournament["url"]}" target="_blank" class="signup-button">Anmelden</a>
+        </div>
+        ${competitionDetails}
+        `)
+        markers.addLayer(marker);
+        if (tournament["id"]) {
+            markerById.set(String(tournament["id"]), marker);
+        }
+    }
+    map.addLayer(markers);
 }
 
 async function getTournaments(dateFrom, dateTo, compType, federations, playerLK) {
@@ -629,7 +650,82 @@ function parseTournamentDate(dateText) {
     return isNaN(parsed.getTime()) ? null : parsed;
 }
 
+// ===== Distance =====
+
+// Mean earth radius in kilometres. Good enough for "is this within 50km": the
+// error from treating the earth as a sphere is well under a percent at these
+// distances, and tournament coordinates are club-level anyway.
+const EARTH_RADIUS_KM = 6371;
+
+function toRadians(degrees) {
+    return degrees * Math.PI / 180;
+}
+
+// distanceKm returns the great-circle distance between two points.
+//
+// Haversine rather than the simpler equirectangular approximation: the latter
+// drifts noticeably over Germany's north-south extent, and this runs over a few
+// hundred tournaments, so the cost is irrelevant.
+function distanceKm(lat1, lon1, lat2, lon2) {
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// tournamentDistanceKm returns the distance to a tournament, or null when it
+// has no usable coordinates.
+//
+// Coordinates arrive as strings and an unparseable one must not become NaN:
+// every NaN comparison is false, so such a tournament would sort unpredictably
+// and slip through a radius filter.
+function tournamentDistanceKm(tournament, origin) {
+    if (!origin) {
+        return null;
+    }
+    const lat = Number.parseFloat(tournament.lat);
+    const lon = Number.parseFloat(tournament.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+    }
+    return distanceKm(origin.lat, origin.lon, lat, lon);
+}
+
+// formatDistance keeps the precision honest: below 10km a decimal is
+// meaningful, beyond that it implies accuracy club-level coordinates lack.
+function formatDistance(km) {
+    if (km == null) {
+        return '';
+    }
+    if (km < 10) {
+        return `${km.toFixed(1).replace('.', ',')} km`;
+    }
+    return `${Math.round(km)} km`;
+}
+
 function compareTournaments(a, b, sortBy) {
+    if (sortBy === 'distance') {
+        const da = a._distanceKm;
+        const db = b._distanceKm;
+        // Tournaments without coordinates sort last: they cannot be placed, and
+        // listing them first would read as "closest".
+        if (da == null && db == null) {
+            return (a.title || '').localeCompare(b.title || '', 'de');
+        }
+        if (da == null) {
+            return 1;
+        }
+        if (db == null) {
+            return -1;
+        }
+        if (da !== db) {
+            return da - db;
+        }
+        return (a.title || '').localeCompare(b.title || '', 'de');
+    }
+
     if (sortBy === 'title') {
         return (a.title || '').localeCompare(b.title || '', 'de');
     }
@@ -675,11 +771,18 @@ function renderTournamentList() {
     }
 
     const sortBy = sortSelect ? sortSelect.value : 'date';
-    const sorted = currentTournaments.slice().sort((a, b) => compareTournaments(a, b, sortBy));
+    const visible = visibleTournaments();
+    const sorted = visible.slice().sort((a, b) => compareTournaments(a, b, sortBy));
 
-    count.textContent = sorted.length === 1
-        ? '1 Turnier'
-        : `${sorted.length} Turniere`;
+    const hidden = currentTournaments.length - visible.length;
+    count.textContent = sorted.length === 1 ? '1 Turnier' : `${sorted.length} Turniere`;
+    if (hidden > 0) {
+        // Say what the radius removed. A count that silently shrinks reads as
+        // missing data rather than as a filter doing its job.
+        count.textContent += hidden === 1
+            ? ' (1 außerhalb des Umkreises)'
+            : ` (${hidden} außerhalb des Umkreises)`;
+    }
 
     list.innerHTML = '';
 
@@ -707,6 +810,16 @@ function renderTournamentList() {
 
         const hasCoords = tournament.lat && tournament.lon;
 
+        // Distance is only shown when it was actually measured. A tournament
+        // pinned at its federation's default is labelled instead: reporting
+        // "73 km" for a marker sitting in the middle of a state would be a
+        // confident lie.
+        const distanceRow = tournament.approximate_location
+            ? '<dt>Entfernung</dt><dd class="tournament-approximate">Standort ungenau</dd>'
+            : (tournament._distanceKm != null
+                ? `<dt>Entfernung</dt><dd>${escapeHtml(formatDistance(tournament._distanceKm))}</dd>`
+                : '');
+
         item.innerHTML = `
             <h3 class="tournament-title">${escapeHtml(tournament.title)}</h3>
             <dl class="tournament-meta">
@@ -715,6 +828,7 @@ function renderTournamentList() {
                 <dd><a target="_blank" rel="noopener"
                        href="${urlGoogleQuery + encodeURIComponent(tournament.organizer || '')}">
                        ${escapeHtml(tournament.organizer)}</a></dd>
+                ${distanceRow}
             </dl>
             ${competitions}
             <div class="tournament-actions">
@@ -818,4 +932,200 @@ function isValidPlayerLK(value) {
     }
     const parsed = parseFloat(String(value).replace(',', '.'));
     return !isNaN(parsed) && parsed >= 1 && parsed <= 25;
+}
+
+// ===== Radius filter =====
+
+// requestLocation asks the browser for the user's position.
+//
+// Only ever called from a click: the issue requires that no permission prompt
+// appears on load, and an unprompted prompt is the fastest way to get denied
+// permanently.
+function requestLocation() {
+    const status = document.getElementById('radiusStatus');
+
+    if (!navigator.geolocation) {
+        setRadiusStatus('Dein Browser unterstützt keine Standortbestimmung. ' +
+            'Gib stattdessen einen Ort oder eine PLZ ein.', 'error');
+        revealPlaceFallback();
+        return;
+    }
+
+    setRadiusStatus('Standort wird ermittelt …', 'pending');
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            setDistanceOrigin({
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                label: 'deinem Standort',
+            });
+        },
+        error => {
+            // Denial is a normal answer, not a fault: offer the manual route
+            // rather than asking again.
+            const denied = error && error.code === error.PERMISSION_DENIED;
+            setRadiusStatus(denied
+                ? 'Standortzugriff abgelehnt. Gib stattdessen einen Ort oder eine PLZ ein.'
+                : 'Standort konnte nicht ermittelt werden. Gib einen Ort oder eine PLZ ein.',
+                'error');
+            revealPlaceFallback();
+        },
+        // A stale fix is fine for a radius of tens of kilometres, and asking for
+        // high accuracy costs battery and time for no benefit here.
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+
+    if (status) {
+        status.focus?.();
+    }
+}
+
+// resolvePlace geocodes a typed place or postcode through the same Nominatim
+// service the backend uses, so the manual route behaves like the automatic one.
+async function resolvePlace() {
+    const input = document.getElementById('radiusPlace');
+    const query = input ? input.value.trim() : '';
+
+    if (query === '') {
+        setRadiusStatus('Bitte gib einen Ort oder eine PLZ ein.', 'error');
+        return;
+    }
+
+    setRadiusStatus('Ort wird gesucht …', 'pending');
+
+    try {
+        const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+            q: query,
+            format: 'json',
+            countrycodes: 'de',
+            limit: '1',
+        });
+        const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const results = await response.json();
+        if (!Array.isArray(results) || results.length === 0) {
+            setRadiusStatus(`Für „${query}" wurde kein Ort gefunden.`, 'error');
+            return;
+        }
+        setDistanceOrigin({
+            lat: Number.parseFloat(results[0].lat),
+            lon: Number.parseFloat(results[0].lon),
+            label: results[0].display_name.split(',')[0],
+        });
+    } catch (err) {
+        setRadiusStatus('Die Ortssuche ist gerade nicht erreichbar.', 'error');
+    }
+}
+
+function setDistanceOrigin(origin) {
+    if (!Number.isFinite(origin.lat) || !Number.isFinite(origin.lon)) {
+        setRadiusStatus('Die Koordinaten konnten nicht gelesen werden.', 'error');
+        return;
+    }
+
+    distanceOrigin = origin;
+    setRadiusStatus(`Entfernungen ab ${origin.label}.`, 'ok');
+
+    const clear = document.getElementById('radiusClear');
+    if (clear) {
+        clear.hidden = false;
+    }
+    // Sorting by distance is only meaningful once there is something to
+    // measure from, so the option appears with the origin.
+    const distanceOption = document.getElementById('sortByDistance');
+    if (distanceOption) {
+        distanceOption.hidden = false;
+    }
+
+    applyRadiusFilter();
+}
+
+function clearDistanceOrigin() {
+    distanceOrigin = null;
+
+    const clear = document.getElementById('radiusClear');
+    if (clear) {
+        clear.hidden = true;
+    }
+
+    const sortSelect = document.getElementById('listSort');
+    const distanceOption = document.getElementById('sortByDistance');
+    if (distanceOption) {
+        distanceOption.hidden = true;
+        if (sortSelect && sortSelect.value === 'distance') {
+            sortSelect.value = 'date';
+        }
+    }
+
+    setRadiusStatus('', 'idle');
+    applyRadiusFilter();
+}
+
+function setRadiusStatus(message, state) {
+    const status = document.getElementById('radiusStatus');
+    if (!status) {
+        return;
+    }
+    status.textContent = message;
+    status.dataset.state = state;
+    status.hidden = message === '';
+}
+
+function revealPlaceFallback() {
+    const fallback = document.getElementById('radiusPlaceRow');
+    if (fallback) {
+        fallback.hidden = false;
+    }
+    const input = document.getElementById('radiusPlace');
+    if (input) {
+        input.focus();
+    }
+}
+
+// applyRadiusFilter recomputes distances and redraws both views.
+//
+// The filter runs over the tournaments already fetched rather than re-querying:
+// the backend has no notion of the user's position, and keeping it that way
+// means the location never leaves the browser.
+function applyRadiusFilter() {
+    for (const tournament of currentTournaments) {
+        tournament._distanceKm = tournamentDistanceKm(tournament, distanceOrigin);
+    }
+
+    if (typeof renderTournaments === 'function') {
+        renderTournaments();
+    }
+    renderTournamentList();
+}
+
+// visibleTournaments applies the radius, if one is active.
+function visibleTournaments() {
+    const radius = selectedRadiusKm();
+    if (!distanceOrigin || radius == null) {
+        return currentTournaments;
+    }
+
+    return currentTournaments.filter(tournament => {
+        // A tournament pinned at its federation's default has no real location.
+        // Filtering it in would place it somewhere it is not; filtering it out
+        // silently would hide it. It is kept and labelled instead, so the user
+        // decides.
+        if (tournament.approximate_location) {
+            return true;
+        }
+        const distance = tournament._distanceKm;
+        return distance != null && distance <= radius;
+    });
+}
+
+function selectedRadiusKm() {
+    const select = document.getElementById('radiusSelect');
+    if (!select || select.value === '') {
+        return null;
+    }
+    const value = Number.parseInt(select.value, 10);
+    return Number.isFinite(value) ? value : null;
 }

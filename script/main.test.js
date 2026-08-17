@@ -14,7 +14,12 @@ const vm = require('vm');
 // pure functions under test, and stop before the Leaflet setup runs.
 const source = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
 // Everything from the list view onwards is pure logic, safe to eval.
-const listSection = source.slice(source.indexOf('// ===== Map markers ====='));
+// Everything from the marker helpers to the radius filter. The radius section
+// is excluded deliberately: it drives the DOM and the geolocation API, neither
+// of which exists here.
+const listSection = source.slice(
+    source.indexOf('// ===== Map markers ====='),
+    source.indexOf('// ===== Radius filter ====='));
 
 // Minimal Leaflet stub: the marker helpers only build icon descriptors.
 const L = {
@@ -39,7 +44,8 @@ vm.createContext(sandbox);
 vm.runInContext(listSection, sandbox);
 
 const { parseTournamentDate, compareTournaments, escapeHtml, isValidPlayerLK,
-        tennisBallPin, clusterIcon } = sandbox;
+        tennisBallPin, clusterIcon, distanceKm, tournamentDistanceKm,
+        formatDistance } = sandbox;
 
 let failures = 0;
 function test(name, fn) {
@@ -182,6 +188,78 @@ test('rejects empty and non-numeric input', () => {
     for (const v of ['', '   ', null, undefined, 'abc', 'LK']) {
         assert.strictEqual(isValidPlayerLK(v), false, `should reject ${JSON.stringify(v)}`);
     }
+});
+
+console.log('distance');
+
+test('measures a known distance', () => {
+    // Karlsruhe to Stuttgart is about 64km as the crow flies.
+    const km = distanceKm(49.0069, 8.4037, 48.7758, 9.1829);
+    assert.ok(Math.abs(km - 64) < 2, `expected about 64km, got ${km.toFixed(1)}`);
+});
+
+test('measures a long distance across the country', () => {
+    // Hamburg to München, roughly 613km.
+    const km = distanceKm(53.5503, 9.9937, 48.1371, 11.5754);
+    assert.ok(Math.abs(km - 613) < 10, `expected about 613km, got ${km.toFixed(1)}`);
+});
+
+test('distance to itself is zero', () => {
+    assert.strictEqual(Math.round(distanceKm(49.0069, 8.4037, 49.0069, 8.4037)), 0);
+});
+
+test('distance is symmetric', () => {
+    const there = distanceKm(49.0069, 8.4037, 53.5503, 9.9937);
+    const back = distanceKm(53.5503, 9.9937, 49.0069, 8.4037);
+    assert.ok(Math.abs(there - back) < 0.001, 'distance should not depend on direction');
+});
+
+test('coordinates arriving as strings are parsed', () => {
+    // The API returns them as strings; treating them as numbers would give NaN.
+    const km = tournamentDistanceKm({ lat: '48.7758', lon: '9.1829' },
+        { lat: 49.0069, lon: 8.4037 });
+    assert.ok(km != null && Math.abs(km - 64) < 2, `got ${km}`);
+});
+
+test('unusable coordinates yield null rather than NaN', () => {
+    // NaN compares false against everything, so a tournament carrying it would
+    // sort unpredictably and slip through the radius filter.
+    const origin = { lat: 49.0069, lon: 8.4037 };
+    for (const bad of [{ lat: '', lon: '' }, { lat: 'n/a', lon: '9.18' }, {}]) {
+        assert.strictEqual(tournamentDistanceKm(bad, origin), null,
+            `expected null for ${JSON.stringify(bad)}`);
+    }
+});
+
+test('no origin means no distance', () => {
+    assert.strictEqual(tournamentDistanceKm({ lat: '48.7758', lon: '9.1829' }, null), null);
+});
+
+test('formats distance with honest precision', () => {
+    // Below 10km a decimal is meaningful; beyond it implies accuracy that
+    // club-level coordinates do not have.
+    assert.strictEqual(formatDistance(3.42), '3,4 km');
+    assert.strictEqual(formatDistance(64.3), '64 km');
+    assert.strictEqual(formatDistance(null), '');
+});
+
+test('sorts by distance with unplaceable tournaments last', () => {
+    const list = [
+        { title: 'Fern', _distanceKm: 120 },
+        { title: 'Unbekannt', _distanceKm: null },
+        { title: 'Nah', _distanceKm: 5 },
+    ];
+    const sorted = list.slice().sort((a, b) => compareTournaments(a, b, 'distance'));
+    assert.deepStrictEqual(sorted.map(t => t.title), ['Nah', 'Fern', 'Unbekannt']);
+});
+
+test('equal distances fall back to the title', () => {
+    const list = [
+        { title: 'B-Turnier', _distanceKm: 10 },
+        { title: 'A-Turnier', _distanceKm: 10 },
+    ];
+    const sorted = list.slice().sort((a, b) => compareTournaments(a, b, 'distance'));
+    assert.deepStrictEqual(sorted.map(t => t.title), ['A-Turnier', 'B-Turnier']);
 });
 
 console.log('map markers');

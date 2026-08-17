@@ -154,6 +154,43 @@
                     </small>
                 </div>
                 <div class="filterContainer">
+                    <label for="radiusSelect">Umkreis:</label>
+                    <select class="filterElement" id="radiusSelect" onchange="applyRadiusFilter()">
+                        <option value="">Ganz Deutschland</option>
+                        <option value="25">25 km</option>
+                        <option value="50">50 km</option>
+                        <option value="100">100 km</option>
+                        <option value="200">200 km</option>
+                    </select>
+                    <!-- The location is requested on click only. Prompting on
+                         load is both what the issue rules out and the quickest
+                         way to a permanent denial. -->
+                    <div class="radiusActions">
+                        <button type="button" class="radiusBtn" id="radiusLocate"
+                                onclick="requestLocation()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
+                                 aria-hidden="true">
+                                <circle cx="12" cy="12" r="3.2"/>
+                                <circle cx="12" cy="12" r="8"/>
+                                <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/>
+                            </svg>
+                            Mein Standort
+                        </button>
+                        <button type="button" class="linkBtn" id="radiusManual"
+                                onclick="revealPlaceFallback()">Ort eingeben</button>
+                        <button type="button" class="linkBtn" id="radiusClear" hidden
+                                onclick="clearDistanceOrigin()">Zurücksetzen</button>
+                    </div>
+                    <div class="radiusPlaceRow" id="radiusPlaceRow" hidden>
+                        <input class="filterElement" type="text" id="radiusPlace"
+                               placeholder="Ort oder PLZ" autocomplete="postal-code"
+                               aria-label="Ort oder Postleitzahl">
+                        <button type="button" class="radiusBtn" onclick="resolvePlace()">Suchen</button>
+                    </div>
+                    <p class="filterHint" id="radiusStatus" role="status" aria-live="polite" hidden></p>
+                </div>
+                <div class="filterContainer">
                     <div class="federationHeader">
                         <label id="federationLabel">Tennisverbände:</label>
                         <div class="federationActions">
@@ -277,6 +314,9 @@
                 <option value="date">Datum</option>
                 <option value="title">Titel</option>
                 <option value="organizer">Veranstalter</option>
+                <!-- Only meaningful once there is a point to measure from, so
+                     it appears with the location. -->
+                <option value="distance" id="sortByDistance" hidden>Entfernung</option>
             </select>
             <span id="listCount" class="list-count" aria-live="polite"></span>
         </div>

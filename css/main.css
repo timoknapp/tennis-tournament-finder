@@ -1750,3 +1750,93 @@ body.list-mode .filter {
         margin-bottom: calc(49px + env(safe-area-inset-bottom, 0px));
     }
 }
+
+/* ---------- Radius filter ---------- */
+
+.radiusActions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
+}
+
+.radiusBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.radiusBtn:hover {
+    background: #dfeae3;
+}
+
+.radiusBtn:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.radiusBtn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.radiusPlaceRow {
+    display: flex;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+}
+
+/* display: flex overrides the hidden attribute, so the manual entry row was
+   always visible even though it is meant to appear only when the automatic
+   route fails. The attribute has to win. */
+.radiusPlaceRow[hidden],
+.radiusActions [hidden] {
+    display: none;
+}
+
+.radiusPlaceRow .filterElement {
+    flex: 1 1 auto;
+    /* An input in a flex row keeps its intrinsic width and refuses to shrink
+       below it, which pushes the button out of the panel on narrow screens. */
+    min-width: 0;
+}
+
+.radiusPlaceRow .radiusBtn {
+    flex: none;
+}
+
+/* The status line carries the outcome of a permission prompt, so it has to be
+   readable rather than decorative. */
+#radiusStatus[data-state="error"] {
+    color: #7d2b22;
+}
+
+#radiusStatus[data-state="ok"] {
+    color: var(--accent-dark);
+}
+
+/* A tournament pinned at its federation's default has no real distance;
+   saying so is better than printing a number that is not true. */
+.tournament-approximate {
+    color: var(--muted);
+    font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .radiusBtn {
+        min-height: 44px;
+        font-size: 14px;
+    }
+}
