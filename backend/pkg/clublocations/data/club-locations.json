@@ -57,6 +57,56 @@
       "city": "Sankt Leon-Rot",
       "state": "Baden-Württemberg",
       "note": "The club name carries the district 'Rot' only; the municipality is Sankt Leon-Rot, so nothing usable can be derived from the name."
+    },
+    {
+      "contains": "Tus Berne",
+      "city": "Hamburg",
+      "state": "Hamburg",
+      "note": "Berne is a district of Hamburg; the club's courts are at Alter Berner Weg, Sasel. The name reads as the Lower Saxony municipality Berne otherwise."
+    },
+    {
+      "contains": "Tennisclub Ellerbek",
+      "city": "Ellerbek",
+      "state": "Schleswig-Holstein",
+      "note": "Ellerbek in Kreis Pinneberg, confirmed by the club's address at Dubenhorst 7. There is also an Ellerbek district in Kiel."
+    },
+    {
+      "contains": "ETUF",
+      "city": "Essen",
+      "state": "Nordrhein-Westfalen",
+      "note": "ETUF is the Essener Turn- und Fechtclub; the abbreviation carries no place name at all."
+    },
+    {
+      "contains": "TSV Neuenkirchen",
+      "state": "Niedersachsen",
+      "note": "Niedersachsen alone has at least three places called Neuenkirchen (Schwafoerden, Land Hadeln, Samtgemeinde Neuenkirchen), and the club is in none of them: it plays at Kabenstrasse 19A in Delmsen, Heidekreis. The '(SFA)' suffix is the former Soltau-Fallingbostel district. Pinned explicitly because no place name reaches the right one.",
+      "lat": "53.027311",
+      "lon": "9.705497"
+    },
+    {
+      "contains": "Tennisclub am Falkenberg",
+      "city": "Norderstedt",
+      "state": "Schleswig-Holstein",
+      "note": "Falkenberg is the neighbourhood, not the municipality: the club is at Am Exerzierplatz 30 in Norderstedt. Geocoding the name lands 100km away near Schleswig."
+    },
+    {
+      "contains": "Gemünden",
+      "city": "Gemünden am Main",
+      "state": "Bayern",
+      "note": "Several places are called Gemünden; the Bavarian tennis one is Gemünden am Main."
+    },
+    {
+      "contains": "TC Viktoria",
+      "city": "Köln",
+      "state": "Nordrhein-Westfalen",
+      "note": "TVM covers Köln and the club there is Tennisclub Viktoria Köln (Höhenberger Ring). Note a Tennisclub FC Viktoria 09 also exists in St. Ingbert, Saarland, so this entry is federation-specific."
+    },
+    {
+      "match": "Neustadt",
+      "state": "Bayern",
+      "lat": "49.727316",
+      "lon": "12.179680",
+      "note": "BTV publishes this club as plain 'Neustadt', which Bavaria has several of (an der Aisch, an der Donau, bei Coburg, an der Waldnaab). The tournament titles name the venue - '6. TennWa-LK-Turnier beim ASV Neustadt' - and ASV Neustadt is in Neustadt an der Waldnaab, confirmed by its Sportheim in OSM. Uses 'match' rather than 'contains' so it cannot swallow other Neustadt clubs."
     }
   ]
 }

@@ -138,6 +138,27 @@ const VIEWPORTS = [
     // computed values, because env() resolves to 0 in a headless browser.
     const cssSource = fs.readFileSync(path.join(ROOT, 'css', 'main.css'), 'utf8');
 
+    console.log('\nmap tiles');
+    const mainJs = fs.readFileSync(path.join(ROOT, 'script', 'main.js'), 'utf8');
+
+    check('tiles are requested over https', () => {
+        // The page is served over TLS, so http tiles are mixed content.
+        // Browsers currently upgrade them silently, but that is a courtesy and
+        // it logs a warning for every tile; the host answers https directly.
+        const httpTiles = mainJs.match(/L\.tileLayer\(\s*'http:\/\/[^']*'/g) || [];
+        assert.strictEqual(httpTiles.length, 0,
+            `tile layer uses http: ${httpTiles.join(', ')}`);
+    });
+
+    check('the map carries OpenStreetMap attribution', () => {
+        // ODbL obliges visible credit; this is a licence term, not decoration.
+        const layer = mainJs.match(/L\.tileLayer\([^)]*\)/s);
+        assert.ok(layer, 'no tile layer found');
+        assert.ok(/attribution:/.test(layer[0]), 'the tile layer declares no attribution');
+        assert.ok(/openstreetmap\.org\/copyright/.test(layer[0]),
+            'attribution must link to the OpenStreetMap copyright page');
+    });
+
     console.log('\nviewport meta');
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     check('viewport is declared on its own meta element', () => {

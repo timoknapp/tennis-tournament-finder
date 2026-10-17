@@ -66,12 +66,8 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Checking %s .. %s across %d federations (this is rate limited, please wait)\n\n",
 		dateFrom, dateTo, len(selected))
 
-	// Index federations so a tournament's pin can be compared against the
-	// federation default it would fall back to.
-	defaults := make(map[string]models.Geocoordinates, len(selected))
 	states := make(map[string]string, len(selected))
 	for _, fed := range selected {
-		defaults[fed.Id] = fed.Geocoordinates
 		states[fed.Id] = fed.State
 	}
 
@@ -86,12 +82,15 @@ func main() {
 			continue
 		}
 
-		def := defaults[fed.Id]
 		for _, t := range tournaments {
 			total++
-			// A tournament pinned exactly at the federation default did not
-			// resolve to a real place.
-			if t.Lat != def.Lat || t.Lon != def.Lon {
+			// Comparing against the federation default used to stand in for
+			// "did not resolve", but several defaults sit exactly on a major
+			// city: the BTV default is München and the WTV default is Dortmund,
+			// to seven decimal places. Clubs in those cities geocoded correctly
+			// and were still reported as failures, which was 17 of the 32 hits
+			// in a live sweep. The parser now records the outcome directly.
+			if !t.ApproximateLocation {
 				continue
 			}
 

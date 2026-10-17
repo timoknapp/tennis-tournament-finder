@@ -100,6 +100,10 @@ func main() {
 	diagMux.Handle(metrics.StatsPath, http.HandlerFunc(metrics.StatsHandler))
 	diagMux.Handle(metrics.DebugVarsPath, expvar.Handler())
 	diagMux.Handle(metrics.EnvPath, http.HandlerFunc(metrics.EnvHandler))
+	// Clubs whose location could not be determined, with paste-ready overrides
+	// for club-locations.json. Wrong pins are otherwise invisible: a tournament
+	// sitting in the middle of a state looks like a working map.
+	diagMux.Handle(metrics.UnresolvedClubsPath, http.HandlerFunc(metrics.UnresolvedClubsHandler))
 	diagAddr := "127.0.0.1:9090"
 	diagServer := newServer(diagAddr, diagMux)
 
