@@ -23,16 +23,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The service worker test compares against a genuinely older build,
           # which it finds in the history. The default shallow clone has none.
           fetch-depth: 50
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
 
       # A syntax error in main.js breaks the whole app silently, since the
       # page still renders but no script runs.
