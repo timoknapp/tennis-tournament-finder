@@ -66,7 +66,7 @@ jobs:
           go tool cover -func=coverage.out | tail -n 20
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: backend/coverage.out
