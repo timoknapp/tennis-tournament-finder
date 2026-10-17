@@ -90,7 +90,7 @@ jobs:
 
     - name: Create deployment comment
       if: steps.check-changes.outputs.has_changes == 'true'
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       with:
         script: |
           const { owner, repo } = context.repo;
