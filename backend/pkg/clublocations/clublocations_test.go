@@ -250,3 +250,105 @@ func TestOverrideNotesAreDocumented(t *testing.T) {
 		check(o)
 	}
 }
+
+// TestOverridesForReportedClubs pins the entries added after a live sweep found
+// them falling back to their federation's default pin. Each name here was
+// observed in production data, so a regression in matching would put real
+// tournaments back in the middle of a state.
+func TestOverridesForReportedClubs(t *testing.T) {
+	table, err := Default()
+	if err != nil {
+		t.Fatalf("loading the default table failed: %v", err)
+	}
+
+	cases := []struct {
+		organizer string
+		wantCity  string
+	}{
+		{"Tus Berne e.V. Tennisabteilung", "Hamburg"},
+		{"Tennisclub Ellerbek e.V.", "Ellerbek"},
+		{"ETUF Tennisriege", "Essen"},
+
+		{"Tennisclub am Falkenberg", "Norderstedt"},
+		{"Gemünden", "Gemünden am Main"},
+		{"TC Viktoria", "Köln"},
+	}
+
+	for _, tc := range cases {
+		override, ok := table.Lookup(tc.organizer)
+		if !ok {
+			t.Errorf("%q has no override; it will fall back to the federation default", tc.organizer)
+			continue
+		}
+		if override.City != tc.wantCity {
+			t.Errorf("%q resolved to %q, want %q", tc.organizer, override.City, tc.wantCity)
+		}
+	}
+}
+
+// TestAmbiguousNamesArePinnedNotGuessed covers the two clubs whose names reach
+// the wrong place even when a place is found.
+//
+// Both were left open in the first pass because guessing produces a confidently
+// wrong pin, which is worse than an obvious fallback. They were resolved from
+// evidence rather than by picking the most likely candidate, and both carry
+// explicit coordinates because no place name reaches them:
+//
+//   - BTV publishes a club as plain "Neustadt". Bavaria has several, but the
+//     tournament titles name the venue ("beim ASV Neustadt"), and ASV Neustadt
+//     is in Neustadt an der Waldnaab.
+//   - "TSV Neuenkirchen (SFA)" is in Delmsen in the Heidekreis, which is none
+//     of the three places called Neuenkirchen in Niedersachsen.
+func TestAmbiguousNamesArePinnedNotGuessed(t *testing.T) {
+	table, err := Default()
+	if err != nil {
+		t.Fatalf("loading the default table failed: %v", err)
+	}
+
+	cases := []struct {
+		organizer string
+		lat, lon  string
+	}{
+		{"Neustadt", "49.727316", "12.179680"},
+		{"TSV Neuenkirchen (SFA)", "53.027311", "9.705497"},
+	}
+
+	for _, tc := range cases {
+		override, ok := table.Lookup(tc.organizer)
+		if !ok {
+			t.Errorf("%q has no override", tc.organizer)
+			continue
+		}
+		if !override.HasCoordinates() {
+			t.Errorf("%q resolves via the city name %q, which does not reach the right place; "+
+				"it needs explicit coordinates", tc.organizer, override.City)
+			continue
+		}
+		if override.Lat != tc.lat || override.Lon != tc.lon {
+			t.Errorf("%q pinned at %s,%s want %s,%s",
+				tc.organizer, override.Lat, override.Lon, tc.lat, tc.lon)
+		}
+	}
+}
+
+// TestNeustadtDoesNotSwallowOtherClubs checks the match/contains distinction.
+//
+// "Neustadt" is matched exactly: as a `contains` rule it would capture every
+// club with Neustadt in its name across all federations and pin them all in
+// the Oberpfalz.
+func TestNeustadtDoesNotSwallowOtherClubs(t *testing.T) {
+	table, err := Default()
+	if err != nil {
+		t.Fatalf("loading the default table failed: %v", err)
+	}
+
+	for _, other := range []string{
+		"TC Neustadt an der Weinstraße",
+		"TSV Neustadt bei Coburg",
+		"SV Neustadt-Glewe",
+	} {
+		if override, ok := table.Lookup(other); ok && override.Lat == "49.727316" {
+			t.Errorf("%q was captured by the plain Neustadt override", other)
+		}
+	}
+}

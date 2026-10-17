@@ -1,0 +1,66 @@
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/frontend.yml"
+      - "index.html"
+      - "css/**"
+      - "script/**"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/frontend.yml"
+      - "index.html"
+      - "css/**"
+      - "script/**"
+
+name: Test Frontend
+jobs:
+  test:
+    name: Syntax & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # The service worker test compares against a genuinely older build,
+          # which it finds in the history. The default shallow clone has none.
+          fetch-depth: 50
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # A syntax error in main.js breaks the whole app silently, since the
+      # page still renders but no script runs.
+      - name: Check JavaScript syntax
+        run: |
+          node --check script/main.js
+          node --check script/mobile-gesture.js
+          node --check script/layout.test.js
+          node --check script/sw-update.test.js
+          node --check service-worker.js
+
+      # Date parsing and sorting cannot be verified by looking at the map.
+      - name: Run frontend unit tests
+        run: node script/main.test.js
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium webkit
+
+      # Layout regressions (uneven margins, accidental page scrolling) are
+      # invisible to unit tests and easy to reintroduce, so they are measured
+      # in real browsers across several phone viewports. WebKit is included
+      # because it, not Chromium, is what iPhones run.
+      - name: Run layout tests
+        run: node script/layout.test.js
+
+      # A merged fix that never reaches the device is not fixed: the update
+      # path itself needs checking, against a genuinely older build.
+      - name: Run service worker update tests
+        run: node script/sw-update.test.js

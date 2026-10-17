@@ -1,12 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <!-- <meta
-      charset="UTF-8"
-      name="viewport"
-      content="initial-scale=1,user-scalable=no,viewport-fit=cover"
-    /> -->
+    <meta charset="UTF-8" />
+    <!-- A single element cannot carry both charset and name: the browser reads
+         the charset and discards the viewport declaration, which is why the
+         page could be zoomed and scrolled on phones.
+         viewport-fit=cover lets the layout extend into the safe areas, which
+         are then handled with env(safe-area-inset-*) in CSS. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Installed to the home screen there is no browser chrome, so iOS frames
+         the app with the theme colour. The manifest declares black, which put a
+         heavy band above and below the interface. Matching the surface keeps
+         the app's own edges continuous with the system areas. -->
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-13pro.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 482px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-13promax.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="/tennis-tournament-finder/images/splash-14pro.png" />
@@ -23,7 +31,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Make sure you put this AFTER Leaflet's CSS -->
     <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js" integrity="sha512-BB3hKbKWOc9Ez/TAwyWxNXeoV9c1v6FIeYiBieIWkpLjauysF18NzgR1MBNBXf8/KABdlkX68nAhlwcDFLGPCQ==" crossorigin=""></script>
@@ -33,157 +41,63 @@
     <title>LK-Turnier Finder</title>
 
     <script>
-        // Enhanced Service Worker registration with user-friendly update handling
-        let updateAvailable = false;
-        let newWorkerWaiting = null;
+        // Service worker registration.
+        //
+        // This used to ask before applying an update: the new worker stayed in
+        // its waiting state behind a "Update verfügbar? Jetzt / Später" dialog.
+        // Two problems with that. A tournament finder has no unsaved work to
+        // protect, so the prompt bought nothing and left people on an old build
+        // until they happened to answer it. And answering it did not reliably
+        // work: updateApp() reloaded immediately, before the new worker had
+        // taken control, so the reload was still served by the old one and the
+        // page came back unchanged. Tapping "Jetzt" appeared to do nothing.
+        //
+        // Updates are now adopted silently. The page reloads once, when the new
+        // worker actually takes control.
+        if ('serviceWorker' in navigator) {
+            // Whether a worker was already in charge when the page loaded. On a
+            // first-ever visit there is none, and the worker that installs then
+            // claims the page immediately: reloading for that would refresh a
+            // page the user just opened, for no benefit.
+            const hadController = !!navigator.serviceWorker.controller;
 
-        function showUpdateNotification() {
-            const notification = document.getElementById('updateNotification');
-            if (notification) {
-                notification.style.display = 'flex';
-                updateAvailable = true;
-                
-                // Focus management for accessibility
-                const updateNowBtn = document.getElementById('updateNowBtn');
-                if (updateNowBtn) {
-                    updateNowBtn.focus();
-                }
-                
-                // Trap focus within the popup
-                setupFocusTrap(notification);
-            }
-        }
-
-        function hideUpdateNotification() {
-            const notification = document.getElementById('updateNotification');
-            if (notification) {
-                notification.style.display = 'none';
-                removeFocusTrap();
-            }
-        }
-
-        function setupFocusTrap(popup) {
-            const focusableElements = popup.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-            const firstElement = focusableElements[0];
-            const lastElement = focusableElements[focusableElements.length - 1];
-            
-            function handleKeyDown(e) {
-                if (e.key === 'Escape') {
-                    hideUpdateNotification();
-                    // Show notification again after 5 minutes
-                    setTimeout(() => {
-                        if (updateAvailable) {
-                            showUpdateNotification();
-                        }
-                    }, 5 * 60 * 1000);
+            // A reload guard: controllerchange fires again after the reload,
+            // and without this the page would refresh in a loop.
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (refreshing || !hadController) {
                     return;
                 }
-                
-                if (e.key === 'Tab') {
-                    if (e.shiftKey) {
-                        if (document.activeElement === firstElement) {
-                            lastElement.focus();
-                            e.preventDefault();
-                        }
-                    } else {
-                        if (document.activeElement === lastElement) {
-                            firstElement.focus();
-                            e.preventDefault();
-                        }
-                    }
-                }
-            }
-            
-            document.addEventListener('keydown', handleKeyDown);
-            popup.setAttribute('data-focus-trap', 'true');
-        }
-        
-        function removeFocusTrap() {
-            const popup = document.getElementById('updateNotification');
-            if (popup && popup.hasAttribute('data-focus-trap')) {
-                popup.removeAttribute('data-focus-trap');
-                // Remove all keydown listeners by cloning and replacing the document
-                // This is a simple approach - in production you'd track the specific listener
-            }
-        }
+                refreshing = true;
+                window.location.reload();
+            });
 
-        function updateApp() {
-            if (newWorkerWaiting) {
-                // Tell the waiting service worker to skip waiting
-                newWorkerWaiting.postMessage({ type: 'SKIP_WAITING' });
-            }
-            // Reload the page to get the latest version
-            window.location.reload();
-        }
-
-        // Set up event listeners for update buttons
-        document.addEventListener('DOMContentLoaded', function() {
-            const updateNowBtn = document.getElementById('updateNowBtn');
-            const updateLaterBtn = document.getElementById('updateLaterBtn');
-
-            if (updateNowBtn) {
-                updateNowBtn.addEventListener('click', function() {
-                    updateApp();
-                });
-            }
-
-            if (updateLaterBtn) {
-                updateLaterBtn.addEventListener('click', function() {
-                    hideUpdateNotification();
-                    // Show notification again after 5 minutes
-                    setTimeout(() => {
-                        if (updateAvailable) {
-                            showUpdateNotification();
-                        }
-                    }, 5 * 60 * 1000); // 5 minutes
-                });
-            }
-        });
-
-        if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js')
                 .then(registration => {
-                    console.log('SW registered:', registration);
-                    
-                    // Check for updates periodically
-                    setInterval(() => {
-                        registration.update();
-                    }, 60000); // Check every minute
-                    
-                    // Handle updates
+                    // Adopt a worker that installed during an earlier visit and
+                    // is still waiting.
+                    if (registration.waiting && navigator.serviceWorker.controller) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+
                     registration.addEventListener('updatefound', () => {
                         const newWorker = registration.installing;
-                        if (newWorker) {
-                            newWorkerWaiting = newWorker;
-                            
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    // New version is available
-                                    console.log('New version available!');
-                                    showUpdateNotification();
-                                } else if (newWorker.state === 'activated') {
-                                    // This happens when user chooses to update
-                                    updateAvailable = false;
-                                    hideUpdateNotification();
-                                }
-                            });
+                        if (!newWorker) {
+                            return;
                         }
+
+                        newWorker.addEventListener('statechange', () => {
+                            // controller is null on a first-ever visit; there is
+                            // nothing to replace then, and skipping waiting would
+                            // reload a page the user just opened.
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                newWorker.postMessage({ type: 'SKIP_WAITING' });
+                            }
+                        });
                     });
 
-                    // Listen for messages from the service worker
-                    navigator.serviceWorker.addEventListener('message', event => {
-                        if (event.data && event.data.type === 'SW_UPDATED') {
-                            console.log('Service Worker updated, reloading page...');
-                            window.location.reload();
-                        }
-                    });
-
-                    // Show the popup if an update is already waiting (e.g., after a reload)
-                    if (registration.waiting && navigator.serviceWorker.controller) {
-                        newWorkerWaiting = registration.waiting;
-                        updateAvailable = true;
-                        showUpdateNotification();
-                    }
+                    // Pick up deploys without needing a cold start.
+                    setInterval(() => registration.update(), 60000);
                 })
                 .catch(error => console.log('SW registration failed:', error));
         }
@@ -196,7 +110,14 @@
             <button id="filterToggle" class="filterToggleBtn" onclick="toggleFilters()">Filter ⚙️</button>
         </div>
         <div class="sideBarElement filter" id="filterContainer">
-            <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value, compType.value, getSelectedFederations())">
+            <!-- Only shown when the panel acts as a sheet on phones. The old
+                 toggle lives in the title row, which is off-screen behind the
+                 sheet, so the sheet needs its own way out. -->
+            <div class="sheetHead">
+                <span class="sheetTitle">Filter</span>
+                <button type="button" class="sheetDone" onclick="toggleFilters()">Fertig</button>
+            </div>
+            <form name="searchForm" action="javascript:getTournamentsByDate(dateFrom.value, dateTo.value, compType.value, getSelectedFederations(), playerLK.value)">
                 <div class="filterContainer">
                     <label for="dateFrom">Zeitraum von:</label>
                     <input class="filterElement" type="date" id="dateFrom" name="dateFrom">
@@ -220,10 +141,70 @@
                     </select>
                 </div>
                 <div class="filterContainer">
-                    <label>Tennisverbände:</label>
-                    <div class="federationCheckboxes">
+                    <label for="playerLK">Meine LK:</label>
+                    <!-- Deliberately type="text" rather than type="number": a number
+                         input rejects the comma German users type for decimals,
+                         and inputmode still brings up a numeric keyboard. -->
+                    <input class="filterElement" type="text" id="playerLK" name="playerLK"
+                           inputmode="decimal" pattern="[0-9]{1,2}([.,][0-9])?"
+                           placeholder="z.B. 12,5" maxlength="5"
+                           aria-describedby="playerLKHint">
+                    <small id="playerLKHint" class="filterHint">
+                        Zeigt nur Konkurrenzen, für die deine LK zugelassen ist (1–25).
+                    </small>
+                </div>
+                <div class="filterContainer">
+                    <label for="radiusSelect">Umkreis:</label>
+                    <select class="filterElement" id="radiusSelect" onchange="applyRadiusFilter()">
+                        <option value="">Ganz Deutschland</option>
+                        <option value="25">25 km</option>
+                        <option value="50">50 km</option>
+                        <option value="100">100 km</option>
+                        <option value="200">200 km</option>
+                    </select>
+                    <!-- The location is requested on click only. Prompting on
+                         load is both what the issue rules out and the quickest
+                         way to a permanent denial. -->
+                    <div class="radiusActions">
+                        <button type="button" class="radiusBtn" id="radiusLocate"
+                                onclick="requestLocation()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
+                                 aria-hidden="true">
+                                <circle cx="12" cy="12" r="3.2"/>
+                                <circle cx="12" cy="12" r="8"/>
+                                <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/>
+                            </svg>
+                            Mein Standort
+                        </button>
+                        <button type="button" class="linkBtn" id="radiusManual"
+                                onclick="revealPlaceFallback()">Ort eingeben</button>
+                        <button type="button" class="linkBtn" id="radiusClear" hidden
+                                onclick="clearDistanceOrigin()">Zurücksetzen</button>
+                    </div>
+                    <div class="radiusPlaceRow" id="radiusPlaceRow" hidden>
+                        <input class="filterElement" type="text" id="radiusPlace"
+                               placeholder="Ort oder PLZ" autocomplete="postal-code"
+                               aria-label="Ort oder Postleitzahl">
+                        <button type="button" class="radiusBtn" onclick="resolvePlace()">Suchen</button>
+                    </div>
+                    <p class="filterHint" id="radiusStatus" role="status" aria-live="polite" hidden></p>
+                </div>
+                <div class="filterContainer">
+                    <div class="federationHeader">
+                        <label id="federationLabel">Tennisverbände:</label>
+                        <div class="federationActions">
+                            <button type="button" class="linkBtn" onclick="selectAllFederations()">Alle</button>
+                            <span class="separator" aria-hidden="true">|</span>
+                            <button type="button" class="linkBtn" onclick="deselectAllFederations()">Keine</button>
+                        </div>
+                    </div>
+                    <div class="federationCheckboxes" role="group" aria-labelledby="federationLabel">
                         <label class="checkboxLabel" title="Badischer Tennisverband">
                             <input type="checkbox" name="federations" value="BAD" checked> BAD
+                        </label>
+                        <label class="checkboxLabel" title="Bayerischer Tennis-Verband">
+                            <input type="checkbox" name="federations" value="BTV"> BTV
                         </label>
                         <label class="checkboxLabel" title="Hamburger Tennisverband">
                             <input type="checkbox" name="federations" value="HAM"> HAM
@@ -233,6 +214,9 @@
                         </label>
                         <label class="checkboxLabel" title="Rheinland-Pfälzischer Tennisverband">
                             <input type="checkbox" name="federations" value="RLP"> RLP
+                        </label>
+                        <label class="checkboxLabel" title="Tennisverband Schleswig-Holstein">
+                            <input type="checkbox" name="federations" value="SLH"> SLH
                         </label>
                         <label class="checkboxLabel" title="Saarländischer Tennisbund">
                             <input type="checkbox" name="federations" value="STB"> STB
@@ -267,11 +251,8 @@
                         <label class="checkboxLabel" title="Westfälischer Tennis-Verband">
                             <input type="checkbox" name="federations" value="WTV"> WTV
                         </label>
-                        <!-- <div class="federationControls">
-                            <button type="button" onclick="selectAllFederations()">Alle</button>
-                            <button type="button" onclick="deselectAllFederations()">Keine</button>
-                        </div> -->
                     </div>
+                    <small id="federationCount" class="filterHint" aria-live="polite"></small>
                 </div>
                 <div class="filterContainer submitContainer">
                     <input class="submitBtn" type="submit" value="Suchen">
@@ -280,25 +261,73 @@
         </div>
     </div>
     <div id="dataNotice" class="data-notice" role="status" aria-live="polite" style="display: none;"></div>
+
+    <!-- The two views of the same results. On phones this becomes a bottom tab
+         bar; on wider screens it stays the small toggle in the corner. It is a
+         real tablist so assistive technology announces it as navigation. -->
+    <div class="viewToggle" role="tablist" aria-label="Ansicht wählen">
+        <button type="button" id="viewMapBtn" class="viewToggleBtn active" role="tab"
+                onclick="setView('map')" aria-pressed="true" aria-selected="true">
+            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/>
+            </svg>
+            <span>Karte</span>
+        </button>
+        <button type="button" id="viewListBtn" class="viewToggleBtn" role="tab"
+                onclick="setView('list')" aria-pressed="false" aria-selected="false">
+            <svg class="tabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+            </svg>
+            <span>Liste</span>
+        </button>
+    </div>
+
+    <!-- Filtering is an action applied to the current view, not a third place
+         to be, so it sits outside the tab bar. Hidden on desktop, where the
+         panel is always visible anyway. -->
+    <button type="button" id="filterFab" class="filterFab" onclick="toggleFilters()"
+            aria-controls="filterContainer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 5h18M6 12h12M10 19h4"/>
+        </svg>
+        <span>Filter</span>
+        <span class="filterFabCount" id="filterFabCount">3</span>
+    </button>
+
+    <!-- Dims the map while the filter sheet is open and gives a tap target for
+         dismissing it. -->
+    <div class="sheetScrim" id="sheetScrim" onclick="toggleFilters()" hidden></div>
+
     <div id="map">
         <div id="loading" class="loading">Loading&#8230;</div>
     </div>
-    
-    <!-- Update Notification Popup -->
-    <div id="updateNotification" class="update-notification" style="display: none;" role="dialog" aria-labelledby="update-title" aria-describedby="update-message">
-        <div class="update-popup">
-            <div class="update-icon" aria-hidden="true">🚀</div>
-            <h3 id="update-title" class="update-title">🎾 Update verfügbar!</h3>
-            <p id="update-message" class="update-message">
-                Möchtest du jetzt aktualisieren? ✨
-            </p>
-            <div class="update-buttons">
-                <button id="updateNowBtn" class="update-btn update-now" type="button">Jetzt</button>
-                <button id="updateLaterBtn" class="update-btn update-later" type="button">Später</button>
-            </div>
+
+    <section id="listView" class="list-view" style="display: none;" aria-labelledby="listViewHeading">
+        <h2 id="listViewHeading" class="visually-hidden">Turnierliste</h2>
+
+        <div class="list-controls">
+            <label for="listSort">Sortieren nach:</label>
+            <select id="listSort" onchange="renderTournamentList()">
+                <option value="date">Datum</option>
+                <option value="title">Titel</option>
+                <option value="organizer">Veranstalter</option>
+                <!-- Only meaningful once there is a point to measure from, so
+                     it appears with the location. -->
+                <option value="distance" id="sortByDistance" hidden>Entfernung</option>
+            </select>
+            <span id="listCount" class="list-count" aria-live="polite"></span>
         </div>
-    </div>
-    <script src="script/main.js"></script>
+
+        <ul id="tournamentList" class="tournament-list"></ul>
+        <p id="listEmpty" class="list-empty" style="display: none;">
+            Keine Turniere gefunden. Bitte Filter anpassen und erneut suchen.
+        </p>
+    </section>
+    
+        <script src="script/main.js"></script>
     <script src="script/mobile-gesture.js"></script>
 </body>
 </html>

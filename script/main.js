@@ -3,10 +3,23 @@ let map = L.map('map', {
   zoomDelta: 0.5,
   doubleClickZoom: true,
   inertia: true,
-  zoomAnimation: true
+  zoomAnimation: true,
+  // Pinch, double-tap and the scroll wheel all zoom, so the +/- buttons only
+  // occupied the corner the filter panel needs.
+  zoomControl: false
 }).setView([51.133481, 10.018343], 7);
 window.map = map; // expose map for gesture script
-L.tileLayer('http://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+// Humanitarian OSM tiles. https rather than http: the page is served over TLS,
+// so http tiles are mixed content. Browsers currently upgrade them silently,
+// but that is a courtesy, not a guarantee, and it logs a warning for every
+// tile. The host answers https directly; the http URL only 301s to it.
+//
+// The attribution is a licence requirement, not decoration: OSM data is ODbL,
+// which obliges visible credit.
+L.tileLayer('https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ' +
+    'tiles courtesy of <a href="https://www.hotosm.org/">Humanitarian OpenStreetMap Team</a>',
+  maxZoom: 19,
   updateWhenZooming: true,   // fetch tiles during zoom animation
   keepBuffer: 3              // keep extra tiles around to reduce visible loads
 }).addTo(map);
@@ -30,23 +43,33 @@ const loadingDiv = document.getElementById('loading');
 
 // Initialize mobile filter visibility
 document.addEventListener('DOMContentLoaded', function() {
-    // Force filters visible on first load so users immediately see the options
-    initializeMobileFilters(true);
+    initializeMobileFilters();
     setupFederationLimits();
     registerMapFilterAutoClose();
+    loadInitialTournaments();
 });
 
-function initializeMobileFilters(forceShow = false) {
+// The backend caches results per federation and a scheduler keeps that cache
+// warm, so the default window is already sitting in memory and answers in well
+// under a second. Making the user press "Suchen" to see it meant every visit
+// started on an empty map.
+function loadInitialTournaments() {
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const compType = document.getElementById('compType').value;
+    const playerLK = document.getElementById('playerLK').value;
+
+    getTournamentsByDate(dateFrom, dateTo, compType, getSelectedFederations(), playerLK);
+}
+
+// Called without an argument now: the app loads results immediately, so on a
+// phone the panel starts closed and lets the user see them. It was previously
+// forced open, which covered the map on every visit.
+function initializeMobileFilters() {
     const filterContainer = document.getElementById('filterContainer');
     const toggleBtn = document.getElementById('filterToggle');
 
     if (!filterContainer || !toggleBtn) {
-        return;
-    }
-
-    if (forceShow) {
-        filterContainer.style.display = 'block';
-        toggleBtn.innerHTML = 'Filter ▲';
         return;
     }
 
@@ -90,6 +113,7 @@ function closeFiltersForMapInteraction() {
 
     filterContainer.style.display = 'none';
     toggleBtn.innerHTML = 'Filter ▼';
+    syncFilterSheet(false);
 }
 
 function registerMapFilterAutoClose() {
@@ -103,68 +127,105 @@ function registerMapFilterAutoClose() {
     });
 }
 
-// Remove automatic initial request - user must manually submit
-// getTournamentsByDate(initDateFrom, initDateTo, "", getSelectedFederations());
+// Tournaments from the most recent search, shared by the map and list views so
+// both always show the same data.
+let currentTournaments = [];
+// The point distances are measured from, once the user asks for it. Held in
+// memory only: the issue is explicit that location must not be persisted, and
+// a stored coordinate would also go stale the moment someone travels.
+let distanceOrigin = null;
+// Marker instances keyed by tournament id, so the list can open the matching
+// popup on the map.
+let markerById = new Map();
+let currentView = 'map';
 
-function getTournamentsByDate(dateFrom, dateTo, compType, federations) {
+function getTournamentsByDate(dateFrom, dateTo, compType, federations, playerLK) {
+    // On a phone the filter is a sheet covering the results, so submitting it
+    // should reveal what was just asked for.
+    closeFiltersForMapInteraction();
+
     if (dateFrom != "" && dateTo != "") {
         dateFrom = formatDateToAPI(dateFrom);
         dateTo = formatDateToAPI(dateTo);
-        getTournaments(dateFrom, dateTo, compType, federations)
+        getTournaments(dateFrom, dateTo, compType, federations, playerLK)
         .then(response => {
             const tournaments = response.tournaments || [];
             renderDataNotice(response, tournaments.length);
 
-            map.removeLayer(markers);
-            markers = createMarkerClusterGroup();
-            for (const tournament of tournaments) {
-                // Process competition entries for display
-                let competitionDetails = "";
-                
-                if (tournament.entries && tournament.entries.length > 0) {
-                    // Create detailed competition list
-                    const validEntries = tournament.entries.filter(entry => 
-                        entry.competition || (entry.skill_level && entry.skill_level.trim() !== ""));
-                    
-                    if (validEntries.length > 0) {
-                        competitionDetails = `
-                        <div id="comp-details-${tournament.id}" style="display: none; max-height: 150px; overflow-y: auto; margin-top: 5px; padding: 5px; background-color: #f9f9f9; border-radius: 3px;">
-                            <table style="width: 100%; font-size: 12px;">
-                                <tr style="font-weight: bold;"><td>Konkurrenz</td><td>LK</td></tr>
-                                ${validEntries.map(entry => `
-                                    <tr>
-                                        <td style="padding: 2px;">${entry.competition || "-"}</td>
-                                        <td style="padding: 2px;">${entry.skill_level || "-"}</td>
-                                    </tr>
-                                `).join("")}
-                            </table>
-                        </div>
-                        <a href="#" onclick="toggleCompetitionDetails('${tournament.id}'); return false;" class="popup-info-text" style="color: #0066cc; text-decoration: none;">
-                            <span id="toggle-text-${tournament.id}">▼ Konkurrenzen anzeigen (${validEntries.length} Einträge)</span>
-                        </a>`;
-                    }
-                }
-
-                const marker = L.marker([tournament["lat"], tournament["lon"]])
-                .bindPopup(`
-                <span class="popupTitle">${tournament["title"]}</span><br><br>
-                <div class="popup-info-text">
-                    <b>Datum:</b> ${tournament["date"]}<br>
-                    <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br>
-                </div>
-                <div class="button-container">
-                    <a href="${tournament["url"]}" target="_blank" class="signup-button">Anmelden</a>
-                </div>
-                ${competitionDetails}
-                `)
-                markers.addLayer(marker);
+            currentTournaments = tournaments;
+            // Distances are per-search: a tournament list without them would
+            // keep stale values from the previous query.
+            for (const tournament of currentTournaments) {
+                tournament._distanceKm = tournamentDistanceKm(tournament, distanceOrigin);
             }
-            map.addLayer(markers);
+
+            renderTournaments();
+            renderTournamentList();
         });
     }
 }
 
-async function getTournaments(dateFrom, dateTo, compType, federations) {
+// renderTournaments draws the markers for whatever is currently visible.
+//
+// Split out of the fetch so the radius filter can redraw without re-querying:
+// the backend never learns the user's position, which is what keeps it in the
+// browser.
+function renderTournaments() {
+    const tournaments = visibleTournaments();
+
+    markerById = new Map();
+    map.removeLayer(markers);
+    markers = createMarkerClusterGroup();
+
+    for (const tournament of tournaments) {
+        // Process competition entries for display
+        let competitionDetails = "";
+        
+        if (tournament.entries && tournament.entries.length > 0) {
+            // Create detailed competition list
+            const validEntries = tournament.entries.filter(entry => 
+                entry.competition || (entry.skill_level && entry.skill_level.trim() !== ""));
+            
+            if (validEntries.length > 0) {
+                competitionDetails = `
+                <div id="comp-details-${tournament.id}" style="display: none; max-height: 150px; overflow-y: auto; margin-top: 5px; padding: 5px; background-color: #f9f9f9; border-radius: 3px;">
+                    <table style="width: 100%; font-size: 12px;">
+                        <tr style="font-weight: bold;"><td>Konkurrenz</td><td>LK</td></tr>
+                        ${validEntries.map(entry => `
+                            <tr>
+                                <td style="padding: 2px;">${entry.competition || "-"}</td>
+                                <td style="padding: 2px;">${entry.skill_level || "-"}</td>
+                            </tr>
+                        `).join("")}
+                    </table>
+                </div>
+                <a href="#" onclick="toggleCompetitionDetails('${tournament.id}'); return false;" class="popup-info-text" style="color: #0066cc; text-decoration: none;">
+                    <span id="toggle-text-${tournament.id}">▼ Konkurrenzen anzeigen (${validEntries.length} Einträge)</span>
+                </a>`;
+            }
+        }
+
+        const marker = L.marker([tournament["lat"], tournament["lon"]], { icon: tournamentIcon() })
+        .bindPopup(`
+        <span class="popupTitle">${tournament["title"]}</span><br><br>
+        <div class="popup-info-text">
+            <b>Datum:</b> ${tournament["date"]}<br>
+            <b>Adresse:</b> <a target="_blank" href="${urlGoogleQuery+tournament["organizer"]}">${tournament["organizer"]}</a><br>
+        </div>
+        <div class="button-container">
+            <a href="${tournament["url"]}" target="_blank" class="signup-button">Anmelden</a>
+        </div>
+        ${competitionDetails}
+        `)
+        markers.addLayer(marker);
+        if (tournament["id"]) {
+            markerById.set(String(tournament["id"]), marker);
+        }
+    }
+    map.addLayer(markers);
+}
+
+async function getTournaments(dateFrom, dateTo, compType, federations, playerLK) {
     showSpinner();
     let url = urlBackend + `?dateFrom=${dateFrom}&dateTo=${dateTo}&format=full`;
     if (compType && compType !== "") {
@@ -172,6 +233,11 @@ async function getTournaments(dateFrom, dateTo, compType, federations) {
     }
     if (federations && federations.length > 0) {
         url += `&federations=${encodeURIComponent(federations.join(','))}`;
+    }
+    // The backend ignores an unparseable value, but filtering here too avoids
+    // a pointless round trip for obvious typos.
+    if (isValidPlayerLK(playerLK)) {
+        url += `&lk=${encodeURIComponent(String(playerLK).replace(',', '.'))}`;
     }
     return fetch(url)
         .then(res => {
@@ -311,6 +377,33 @@ function updateFederationSelectionState() {
             checkbox.disabled = false;
         }
     });
+
+    updateFederationCount(checkedBoxes.length, checkboxes.length);
+}
+
+// updateFederationCount reports the selection, so "Keine" cannot leave the
+// user wondering why a search returns nothing.
+function updateFederationCount(selected, total) {
+    const el = document.getElementById('federationCount');
+    if (!el) {
+        return;
+    }
+
+    if (selected === 0) {
+        el.textContent = 'Kein Verband ausgewählt — bitte mindestens einen wählen.';
+    } else if (selected === total) {
+        el.textContent = `Alle ${total} Verbände ausgewählt.`;
+    } else {
+        el.textContent = `${selected} von ${total} Verbänden ausgewählt.`;
+    }
+
+    // The same number on the filter button, so the current selection is legible
+    // on a phone without opening the sheet.
+    const badge = document.getElementById('filterFabCount');
+    if (badge) {
+        badge.textContent = String(selected);
+        badge.hidden = selected === 0;
+    }
 }
 
 // renderDataNotice surfaces stale or failed federations.
@@ -356,18 +449,57 @@ function renderDataNotice(response, tournamentCount) {
 function toggleFilters() {
     const filterContainer = document.getElementById('filterContainer');
     const toggleBtn = document.getElementById('filterToggle');
-    
-    if (filterContainer.style.display === 'none') {
-        filterContainer.style.display = 'block';
+
+    // The inline style is empty until something sets it, while the initial
+    // display: none comes from the stylesheet. Reading style.display therefore
+    // reported "visible" on a hidden panel, so the first tap closed an already
+    // closed panel and appeared to do nothing.
+    const hidden = getComputedStyle(filterContainer).display === 'none';
+
+    if (hidden) {
+        // The sheet uses flex on phones, so let the stylesheet decide the value
+        // rather than pinning it to block.
+        filterContainer.style.display = '';
+        if (getComputedStyle(filterContainer).display === 'none') {
+            filterContainer.style.display = 'block';
+        }
         toggleBtn.innerHTML = 'Filter ▲';
     } else {
         filterContainer.style.display = 'none';
         toggleBtn.innerHTML = 'Filter ▼';
     }
+
+    syncFilterSheet(hidden);
+}
+
+// Keeps the sheet's companions in step with the panel: the scrim that dims the
+// map behind it, and the button's expanded state.
+function syncFilterSheet(isOpen) {
+    const scrim = document.getElementById('sheetScrim');
+    const fab = document.getElementById('filterFab');
+    const sideBar = document.querySelector('.sideBar');
+
+    if (scrim) {
+        scrim.hidden = !isOpen;
+    }
+    if (fab) {
+        fab.setAttribute('aria-expanded', String(isOpen));
+    }
+    // .sideBar has a z-index of its own, which makes it a stacking context: the
+    // sheet inside it cannot paint above the scrim no matter what z-index the
+    // sheet is given. Raising the whole sidebar is what actually lifts it.
+    // Mirrors the :has() rule for engines that lack it.
+    if (sideBar) {
+        sideBar.classList.toggle('sheet-open', isOpen);
+    }
 }
 
 function createMarkerClusterGroup() {
-    const group = L.markerClusterGroup();
+    const group = L.markerClusterGroup({
+        iconCreateFunction: cluster => clusterIcon(cluster.getChildCount()),
+        showCoverageOnHover: false,
+        maxClusterRadius: 55,
+    });
     attachFilterAutoCloseToMarkers(group);
     return group;
 }
@@ -381,4 +513,619 @@ function attachFilterAutoCloseToMarkers(group) {
     markerEvents.forEach(eventName => {
         group.on(eventName, closeFiltersForMapInteraction);
     });
+}
+// ===== Map markers =====
+//
+// The default Leaflet pin is a generic blue teardrop that reads as "some
+// library" rather than as this app. These markers use the app's accent colour
+// and carry a tennis ball inside the pin, so they tie back to the product and
+// stay legible against both street and satellite tiles.
+//
+// They are inline SVG (via a data URI) rather than image files: that keeps
+// them crisp on any display density, adds no extra request, and lets the
+// colour follow the design tokens.
+
+const MARKER_ACCENT = '#2f6f4e';
+const MARKER_ACCENT_DARK = '#255a3f';
+
+// tennisBallPin returns an SVG pin with a tennis ball at its centre.
+// The white ring around the pin lifts it off busy map tiles.
+function tennisBallPin({ size = 40, accent = MARKER_ACCENT } = {}) {
+    const height = Math.round(size * 1.25);
+    return `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${height}" viewBox="0 0 32 40">
+  <defs>
+    <filter id="mshadow" x="-50%" y="-30%" width="200%" height="180%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.4" flood-color="#1f2421" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <path d="M16 1.5c-6.9 0-12.5 5.6-12.5 12.5 0 8.6 10.6 22 12.1 23.9.2.3.6.3.8 0C17.9 36 28.5 22.6 28.5 14 28.5 7.1 22.9 1.5 16 1.5z"
+        fill="${accent}" stroke="#ffffff" stroke-width="2.2" filter="url(#mshadow)"/>
+  <circle cx="16" cy="13.7" r="6.1" fill="#e8f24a"/>
+  <!-- A tennis ball's two seams bow in opposite directions, like facing
+       parentheses. Curving them toward each other instead produces a V that
+       reads as a leaf. -->
+  <path d="M11.3 9.6c2.1 2.4 2.1 5.8 0 8.2" fill="none" stroke="#ffffff"
+        stroke-width="1.15" stroke-linecap="round" opacity="0.95"/>
+  <path d="M20.7 9.6c-2.1 2.4-2.1 5.8 0 8.2" fill="none" stroke="#ffffff"
+        stroke-width="1.15" stroke-linecap="round" opacity="0.95"/>
+</svg>`.trim();
+}
+
+function svgIcon(svg, size, height, anchorY) {
+    return L.icon({
+        iconUrl: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        iconSize: [size, height],
+        iconAnchor: [size / 2, anchorY],
+        popupAnchor: [0, -anchorY + 4],
+    });
+}
+
+function tournamentIcon() {
+    const size = 34;
+    const height = Math.round(size * 1.25);
+    return svgIcon(tennisBallPin({ size }), size, height, height - 2);
+}
+
+// clusterIcon draws the group count inside a tennis ball, so a cluster reads
+// as "several tournaments here" rather than as an unrelated coloured blob.
+function clusterIcon(count) {
+    // Three sizes keep dense areas from being dominated by huge circles.
+    const size = count < 10 ? 38 : count < 100 ? 46 : 54;
+    const fontSize = count < 10 ? 14 : count < 100 ? 15 : 15;
+    const label = count > 999 ? '999+' : String(count);
+
+    const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 56 56">
+  <defs>
+    <filter id="cshadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#1f2421" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <circle cx="28" cy="28" r="24" fill="${MARKER_ACCENT}" stroke="#ffffff" stroke-width="3" filter="url(#cshadow)"/>
+  <!-- Both seams, bowing outward like a real ball, kept faint so the count
+       stays the dominant element. -->
+  <path d="M8 12.5c5 4.6 5 26.4 0 31" fill="none" stroke="#e8f24a"
+        stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <path d="M48 12.5c-5 4.6-5 26.4 0 31" fill="none" stroke="#e8f24a"
+        stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  <text x="28" y="28" text-anchor="middle" dominant-baseline="central"
+        font-family="Inter, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="${fontSize * 56 / size}" font-weight="700" fill="#ffffff">${label}</text>
+</svg>`.trim();
+
+    return L.divIcon({
+        html: svg,
+        className: 'ttf-cluster',
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+    });
+}
+
+// ===== List view =====
+//
+// The map alone makes it hard to compare dates and is awkward to use with a
+// keyboard or screen reader. The list shows the same data from the same state,
+// so the two views can never disagree.
+
+// parseTournamentDate extracts a sortable start date from the free-text date
+// string the federations publish.
+//
+// Formats seen in live data vary per federation, e.g.:
+//   "22.08. bis 23.08."          (old API, no year)
+//   "Sa, 15.8.2026 abgesagt"     (new API, weekday + trailing note)
+//   "So, 16.8. – Fr, 21.8.2026"  (new API, range)
+//
+// Returns null when nothing usable is found, so sorting can put those last
+// instead of guessing a wrong date.
+function parseTournamentDate(dateText) {
+    if (!dateText) {
+        return null;
+    }
+
+    // First day/month pair wins: it is the tournament's start in every format.
+    const match = String(dateText).match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})?/);
+    if (!match) {
+        return null;
+    }
+
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    if (!day || !month || month > 12 || day > 31) {
+        return null;
+    }
+
+    // Without a year, assume the search window: use the current year and roll
+    // over to the next one when the date already passed by more than a month.
+    let year = match[3] ? parseInt(match[3], 10) : new Date().getFullYear();
+    const parsed = new Date(year, month - 1, day);
+    if (!match[3]) {
+        const monthAgo = new Date();
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        if (parsed < monthAgo) {
+            parsed.setFullYear(year + 1);
+        }
+    }
+
+    return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+// ===== Distance =====
+
+// Mean earth radius in kilometres. Good enough for "is this within 50km": the
+// error from treating the earth as a sphere is well under a percent at these
+// distances, and tournament coordinates are club-level anyway.
+const EARTH_RADIUS_KM = 6371;
+
+function toRadians(degrees) {
+    return degrees * Math.PI / 180;
+}
+
+// distanceKm returns the great-circle distance between two points.
+//
+// Haversine rather than the simpler equirectangular approximation: the latter
+// drifts noticeably over Germany's north-south extent, and this runs over a few
+// hundred tournaments, so the cost is irrelevant.
+function distanceKm(lat1, lon1, lat2, lon2) {
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// tournamentDistanceKm returns the distance to a tournament, or null when it
+// has no usable coordinates.
+//
+// Coordinates arrive as strings and an unparseable one must not become NaN:
+// every NaN comparison is false, so such a tournament would sort unpredictably
+// and slip through a radius filter.
+function tournamentDistanceKm(tournament, origin) {
+    if (!origin) {
+        return null;
+    }
+    const lat = Number.parseFloat(tournament.lat);
+    const lon = Number.parseFloat(tournament.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+    }
+    return distanceKm(origin.lat, origin.lon, lat, lon);
+}
+
+// formatDistance keeps the precision honest: below 10km a decimal is
+// meaningful, beyond that it implies accuracy club-level coordinates lack.
+function formatDistance(km) {
+    if (km == null) {
+        return '';
+    }
+    if (km < 10) {
+        return `${km.toFixed(1).replace('.', ',')} km`;
+    }
+    return `${Math.round(km)} km`;
+}
+
+function compareTournaments(a, b, sortBy) {
+    if (sortBy === 'distance') {
+        const da = a._distanceKm;
+        const db = b._distanceKm;
+        // Tournaments without coordinates sort last: they cannot be placed, and
+        // listing them first would read as "closest".
+        if (da == null && db == null) {
+            return (a.title || '').localeCompare(b.title || '', 'de');
+        }
+        if (da == null) {
+            return 1;
+        }
+        if (db == null) {
+            return -1;
+        }
+        if (da !== db) {
+            return da - db;
+        }
+        return (a.title || '').localeCompare(b.title || '', 'de');
+    }
+
+    if (sortBy === 'title') {
+        return (a.title || '').localeCompare(b.title || '', 'de');
+    }
+    if (sortBy === 'organizer') {
+        return (a.organizer || '').localeCompare(b.organizer || '', 'de');
+    }
+
+    // Date: unparseable entries sort last rather than to 1970.
+    const da = parseTournamentDate(a.date);
+    const db = parseTournamentDate(b.date);
+    if (!da && !db) {
+        return (a.title || '').localeCompare(b.title || '', 'de');
+    }
+    if (!da) {
+        return 1;
+    }
+    if (!db) {
+        return -1;
+    }
+    if (da.getTime() !== db.getTime()) {
+        return da - db;
+    }
+    return (a.title || '').localeCompare(b.title || '', 'de');
+}
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderTournamentList() {
+    const list = document.getElementById('tournamentList');
+    const empty = document.getElementById('listEmpty');
+    const count = document.getElementById('listCount');
+    const sortSelect = document.getElementById('listSort');
+
+    if (!list || !empty || !count) {
+        return;
+    }
+
+    const sortBy = sortSelect ? sortSelect.value : 'date';
+    const visible = visibleTournaments();
+    const sorted = visible.slice().sort((a, b) => compareTournaments(a, b, sortBy));
+
+    const hidden = currentTournaments.length - visible.length;
+    count.textContent = sorted.length === 1 ? '1 Turnier' : `${sorted.length} Turniere`;
+    if (hidden > 0) {
+        // Say what the radius removed. A count that silently shrinks reads as
+        // missing data rather than as a filter doing its job.
+        count.textContent += hidden === 1
+            ? ' (1 außerhalb des Umkreises)'
+            : ` (${hidden} außerhalb des Umkreises)`;
+    }
+
+    list.innerHTML = '';
+
+    if (sorted.length === 0) {
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+
+    const fragment = document.createDocumentFragment();
+
+    for (const tournament of sorted) {
+        const entries = (tournament.entries || []).filter(entry =>
+            entry.competition || (entry.skill_level && entry.skill_level.trim() !== ''));
+
+        const item = document.createElement('li');
+        item.className = 'tournament-item';
+
+        const competitions = entries.length > 0
+            ? `<ul class="tournament-competitions">${entries.map(entry => `
+                    <li><span class="competition-name">${escapeHtml(entry.competition || '-')}</span>
+                        <span class="competition-lk">${escapeHtml(entry.skill_level || '')}</span></li>
+               `).join('')}</ul>`
+            : '';
+
+        const hasCoords = tournament.lat && tournament.lon;
+
+        // Distance is only shown when it was actually measured. A tournament
+        // pinned at its federation's default is labelled instead: reporting
+        // "73 km" for a marker sitting in the middle of a state would be a
+        // confident lie.
+        const distanceRow = tournament.approximate_location
+            ? '<dt>Entfernung</dt><dd class="tournament-approximate">Standort ungenau</dd>'
+            : (tournament._distanceKm != null
+                ? `<dt>Entfernung</dt><dd>${escapeHtml(formatDistance(tournament._distanceKm))}</dd>`
+                : '');
+
+        item.innerHTML = `
+            <h3 class="tournament-title">${escapeHtml(tournament.title)}</h3>
+            <dl class="tournament-meta">
+                <dt>Datum</dt><dd>${escapeHtml(tournament.date)}</dd>
+                <dt>Veranstalter</dt>
+                <dd><a target="_blank" rel="noopener"
+                       href="${urlGoogleQuery + encodeURIComponent(tournament.organizer || '')}">
+                       ${escapeHtml(tournament.organizer)}</a></dd>
+                ${distanceRow}
+            </dl>
+            ${competitions}
+            <div class="tournament-actions">
+                <a href="${escapeHtml(tournament.url)}" target="_blank" rel="noopener"
+                   class="signup-button">Anmelden</a>
+                ${hasCoords ? `<button type="button" class="map-button"
+                    data-tournament-id="${escapeHtml(tournament.id)}">Auf Karte zeigen</button>` : ''}
+            </div>
+        `;
+
+        if (hasCoords) {
+            const mapButton = item.querySelector('.map-button');
+            if (mapButton) {
+                mapButton.addEventListener('click', () => showTournamentOnMap(tournament));
+            }
+        }
+
+        fragment.appendChild(item);
+    }
+
+    list.appendChild(fragment);
+}
+
+// showTournamentOnMap switches to the map and opens the matching popup, so
+// selecting an entry in the list stays connected to the map view.
+function showTournamentOnMap(tournament) {
+    setView('map');
+
+    const lat = parseFloat(tournament.lat);
+    const lon = parseFloat(tournament.lon);
+    if (isNaN(lat) || isNaN(lon)) {
+        return;
+    }
+
+    map.setView([lat, lon], Math.max(map.getZoom(), 12));
+
+    const marker = markerById.get(String(tournament.id));
+    if (!marker) {
+        return;
+    }
+
+    // Markers live in a cluster group, so the cluster has to be expanded
+    // before the popup can open.
+    if (typeof markers.zoomToShowLayer === 'function') {
+        markers.zoomToShowLayer(marker, () => marker.openPopup());
+    } else {
+        marker.openPopup();
+    }
+}
+
+function setView(view) {
+    const mapEl = document.getElementById('map');
+    const listEl = document.getElementById('listView');
+    const mapBtn = document.getElementById('viewMapBtn');
+    const listBtn = document.getElementById('viewListBtn');
+
+    if (!mapEl || !listEl || !mapBtn || !listBtn) {
+        return;
+    }
+
+    currentView = view === 'list' ? 'list' : 'map';
+    const showList = currentView === 'list';
+
+    // The sidebar floats above the map by design. In the list view that would
+    // cover the first results, so the page switches to a normal document flow
+    // with the filters above the list.
+    document.body.classList.toggle('list-mode', showList);
+    // The map view locks scrolling on the document so the map owns all
+    // gestures; the list view is an ordinary page and needs it released.
+    // Mirrored onto <html> because :has() is not available everywhere.
+    document.documentElement.classList.toggle('list-mode', showList);
+
+    mapEl.style.display = showList ? 'none' : 'block';
+    listEl.style.display = showList ? 'block' : 'none';
+
+    mapBtn.classList.toggle('active', !showList);
+    listBtn.classList.toggle('active', showList);
+    mapBtn.setAttribute('aria-pressed', String(!showList));
+    listBtn.setAttribute('aria-pressed', String(showList));
+    // The buttons are tabs on phones, where aria-selected is what conveys the
+    // active view; aria-pressed alone would announce them as toggle buttons.
+    mapBtn.setAttribute('aria-selected', String(!showList));
+    listBtn.setAttribute('aria-selected', String(showList));
+
+    if (showList) {
+        renderTournamentList();
+    } else {
+        // Leaflet renders a grey area when the container was hidden while it
+        // resized, so the map has to be told its size changed.
+        setTimeout(() => map.invalidateSize(), 0);
+    }
+}
+
+// isValidPlayerLK reports whether a value looks like a German LK.
+//
+// The scale runs from 1.0 (best) to 25.0 (beginner). Both decimal separators
+// are accepted because German keyboards produce a comma.
+function isValidPlayerLK(value) {
+    if (value === null || value === undefined || String(value).trim() === '') {
+        return false;
+    }
+    const parsed = parseFloat(String(value).replace(',', '.'));
+    return !isNaN(parsed) && parsed >= 1 && parsed <= 25;
+}
+
+// ===== Radius filter =====
+
+// requestLocation asks the browser for the user's position.
+//
+// Only ever called from a click: the issue requires that no permission prompt
+// appears on load, and an unprompted prompt is the fastest way to get denied
+// permanently.
+function requestLocation() {
+    const status = document.getElementById('radiusStatus');
+
+    if (!navigator.geolocation) {
+        setRadiusStatus('Dein Browser unterstützt keine Standortbestimmung. ' +
+            'Gib stattdessen einen Ort oder eine PLZ ein.', 'error');
+        revealPlaceFallback();
+        return;
+    }
+
+    setRadiusStatus('Standort wird ermittelt …', 'pending');
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            setDistanceOrigin({
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                label: 'deinem Standort',
+            });
+        },
+        error => {
+            // Denial is a normal answer, not a fault: offer the manual route
+            // rather than asking again.
+            const denied = error && error.code === error.PERMISSION_DENIED;
+            setRadiusStatus(denied
+                ? 'Standortzugriff abgelehnt. Gib stattdessen einen Ort oder eine PLZ ein.'
+                : 'Standort konnte nicht ermittelt werden. Gib einen Ort oder eine PLZ ein.',
+                'error');
+            revealPlaceFallback();
+        },
+        // A stale fix is fine for a radius of tens of kilometres, and asking for
+        // high accuracy costs battery and time for no benefit here.
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+
+    if (status) {
+        status.focus?.();
+    }
+}
+
+// resolvePlace geocodes a typed place or postcode through the same Nominatim
+// service the backend uses, so the manual route behaves like the automatic one.
+async function resolvePlace() {
+    const input = document.getElementById('radiusPlace');
+    const query = input ? input.value.trim() : '';
+
+    if (query === '') {
+        setRadiusStatus('Bitte gib einen Ort oder eine PLZ ein.', 'error');
+        return;
+    }
+
+    setRadiusStatus('Ort wird gesucht …', 'pending');
+
+    try {
+        const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+            q: query,
+            format: 'json',
+            countrycodes: 'de',
+            limit: '1',
+        });
+        const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const results = await response.json();
+        if (!Array.isArray(results) || results.length === 0) {
+            setRadiusStatus(`Für „${query}" wurde kein Ort gefunden.`, 'error');
+            return;
+        }
+        setDistanceOrigin({
+            lat: Number.parseFloat(results[0].lat),
+            lon: Number.parseFloat(results[0].lon),
+            label: results[0].display_name.split(',')[0],
+        });
+    } catch (err) {
+        setRadiusStatus('Die Ortssuche ist gerade nicht erreichbar.', 'error');
+    }
+}
+
+function setDistanceOrigin(origin) {
+    if (!Number.isFinite(origin.lat) || !Number.isFinite(origin.lon)) {
+        setRadiusStatus('Die Koordinaten konnten nicht gelesen werden.', 'error');
+        return;
+    }
+
+    distanceOrigin = origin;
+    setRadiusStatus(`Entfernungen ab ${origin.label}.`, 'ok');
+
+    const clear = document.getElementById('radiusClear');
+    if (clear) {
+        clear.hidden = false;
+    }
+    // Sorting by distance is only meaningful once there is something to
+    // measure from, so the option appears with the origin.
+    const distanceOption = document.getElementById('sortByDistance');
+    if (distanceOption) {
+        distanceOption.hidden = false;
+    }
+
+    applyRadiusFilter();
+}
+
+function clearDistanceOrigin() {
+    distanceOrigin = null;
+
+    const clear = document.getElementById('radiusClear');
+    if (clear) {
+        clear.hidden = true;
+    }
+
+    const sortSelect = document.getElementById('listSort');
+    const distanceOption = document.getElementById('sortByDistance');
+    if (distanceOption) {
+        distanceOption.hidden = true;
+        if (sortSelect && sortSelect.value === 'distance') {
+            sortSelect.value = 'date';
+        }
+    }
+
+    setRadiusStatus('', 'idle');
+    applyRadiusFilter();
+}
+
+function setRadiusStatus(message, state) {
+    const status = document.getElementById('radiusStatus');
+    if (!status) {
+        return;
+    }
+    status.textContent = message;
+    status.dataset.state = state;
+    status.hidden = message === '';
+}
+
+function revealPlaceFallback() {
+    const fallback = document.getElementById('radiusPlaceRow');
+    if (fallback) {
+        fallback.hidden = false;
+    }
+    const input = document.getElementById('radiusPlace');
+    if (input) {
+        input.focus();
+    }
+}
+
+// applyRadiusFilter recomputes distances and redraws both views.
+//
+// The filter runs over the tournaments already fetched rather than re-querying:
+// the backend has no notion of the user's position, and keeping it that way
+// means the location never leaves the browser.
+function applyRadiusFilter() {
+    for (const tournament of currentTournaments) {
+        tournament._distanceKm = tournamentDistanceKm(tournament, distanceOrigin);
+    }
+
+    if (typeof renderTournaments === 'function') {
+        renderTournaments();
+    }
+    renderTournamentList();
+}
+
+// visibleTournaments applies the radius, if one is active.
+function visibleTournaments() {
+    const radius = selectedRadiusKm();
+    if (!distanceOrigin || radius == null) {
+        return currentTournaments;
+    }
+
+    return currentTournaments.filter(tournament => {
+        // A tournament pinned at its federation's default has no real location.
+        // Filtering it in would place it somewhere it is not; filtering it out
+        // silently would hide it. It is kept and labelled instead, so the user
+        // decides.
+        if (tournament.approximate_location) {
+            return true;
+        }
+        const distance = tournament._distanceKm;
+        return distance != null && distance <= radius;
+    });
+}
+
+function selectedRadiusKm() {
+    const select = document.getElementById('radiusSelect');
+    if (!select || select.value === '') {
+        return null;
+    }
+    const value = Number.parseInt(select.value, 10);
+    return Number.isFinite(value) ? value : null;
 }

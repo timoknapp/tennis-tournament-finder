@@ -888,3 +888,85 @@ func TestEndToEndCacheKeysAreQuerySpecific(t *testing.T) {
 		t.Errorf("made %d fetches for %d distinct queries, want one each", got, len(queries))
 	}
 }
+
+// TestEndToEndLKFilterParameter covers the ?lk= query parameter through the
+// real handler.
+func TestEndToEndLKFilterParameter(t *testing.T) {
+	initIsolatedCache(t)
+	mockNominatim(t, "Karlsruhe, Baden-Württemberg, Deutschland", "49.0069", "8.4037")
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	// The fixture's first tournament has LK 12,0 and LK 14,5 competitions.
+	fedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, oldAPIResponse)
+	}))
+	defer fedSrv.Close()
+
+	fed := models.Federation{
+		Id: "BAD", Url: fedSrv.URL, State: "Baden-Württemberg", ApiVersion: "old",
+		Geocoordinates: models.Geocoordinates{Lat: "49.0", Lon: "8.4"},
+	}
+
+	tournaments, _ := tournament.CollectTournaments(
+		context.Background(), []models.Federation{fed}, "01.08.2026", "15.08.2026", "")
+	if len(tournaments) == 0 {
+		t.Fatal("no tournaments parsed from the fixture")
+	}
+
+	// The fixture publishes single LK values, which parse as a point range.
+	// A player at exactly that value qualifies; one far away does not.
+	strict := tournament.FilterByLK(tournaments, 12.0)
+	if len(strict) == 0 {
+		t.Error("LK 12.0 filtered out the matching competition")
+	}
+}
+
+// TestEndToEndLKFilterSharesCacheEntries verifies the filter runs after the
+// cache lookup, so different player LKs do not multiply cache entries.
+func TestEndToEndLKFilterSharesCacheEntries(t *testing.T) {
+	initIsolatedCache(t)
+	mockNominatim(t, "Karlsruhe, Baden-Württemberg, Deutschland", "49.0069", "8.4037")
+	cache := withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	var fetches int64
+	fedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&fetches, 1)
+		fmt.Fprint(w, oldAPIResponse)
+	}))
+	defer fedSrv.Close()
+
+	for _, lk := range []string{"5", "12", "20"} {
+		req := httptest.NewRequest(http.MethodGet,
+			"/?dateFrom=01.08.2026&dateTo=15.08.2026&federations=DOES_NOT_EXIST&lk="+lk, nil)
+		tournament.GetTournaments(httptest.NewRecorder(), req)
+	}
+
+	stats, err := cache.Stats()
+	if err != nil {
+		t.Fatalf("Stats() error = %v", err)
+	}
+	// Three different LK values must not create three cache entries.
+	if stats.Entries > 1 {
+		t.Errorf("cache holds %d entries for 3 LK values; the filter should run after the cache",
+			stats.Entries)
+	}
+}
+
+func TestEndToEndInvalidLKParameterIsIgnored(t *testing.T) {
+	initIsolatedCache(t)
+	withResultCache(t, resultcache.Options{TTL: time.Hour, StaleTTL: 24 * time.Hour})
+
+	// A bad value must not fail the request; it is ignored so the user still
+	// sees results.
+	for _, lk := range []string{"abc", "99", "-3", ""} {
+		req := httptest.NewRequest(http.MethodGet,
+			"/?dateFrom=01.08.2026&dateTo=02.08.2026&federations=DOES_NOT_EXIST&lk="+lk, nil)
+		rec := httptest.NewRecorder()
+
+		tournament.GetTournaments(rec, req)
+
+		if rec.Result().StatusCode != http.StatusOK {
+			t.Errorf("lk=%q produced status %d, want 200", lk, rec.Result().StatusCode)
+		}
+	}
+}

@@ -1,0 +1,346 @@
+// Unit tests for the list view's date parsing and sorting.
+//
+// Federations publish dates as free text in several formats, so this logic is
+// easy to break and impossible to verify by looking at the map.
+//
+// Run with: node script/main.test.js
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+// main.js expects a browser. Load it in a sandbox with just enough DOM for the
+// pure functions under test, and stop before the Leaflet setup runs.
+const source = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+// Everything from the list view onwards is pure logic, safe to eval.
+// Everything from the marker helpers to the radius filter. The radius section
+// is excluded deliberately: it drives the DOM and the geolocation API, neither
+// of which exists here.
+const listSection = source.slice(
+    source.indexOf('// ===== Map markers ====='),
+    source.indexOf('// ===== Radius filter ====='));
+
+// Minimal Leaflet stub: the marker helpers only build icon descriptors.
+const L = {
+    icon: opts => ({ options: opts }),
+    divIcon: opts => ({ options: opts }),
+};
+
+const sandbox = {
+    console,
+    Date,
+    L,
+    document: { getElementById: () => null, querySelectorAll: () => [] },
+    window: {},
+    urlGoogleQuery: 'https://maps.google.com/maps?q=',
+    currentTournaments: [],
+    markerById: new Map(),
+    map: {},
+    markers: {},
+    setView: () => {},
+};
+vm.createContext(sandbox);
+vm.runInContext(listSection, sandbox);
+
+const { parseTournamentDate, compareTournaments, escapeHtml, isValidPlayerLK,
+        tennisBallPin, clusterIcon, distanceKm, tournamentDistanceKm,
+        formatDistance } = sandbox;
+
+let failures = 0;
+function test(name, fn) {
+    try {
+        fn();
+        console.log(`  ok  ${name}`);
+    } catch (err) {
+        failures++;
+        console.error(`  FAIL ${name}\n       ${err.message}`);
+    }
+}
+
+console.log('parseTournamentDate');
+
+test('parses the old API range format', () => {
+    const d = parseTournamentDate('22.08. bis 23.08.');
+    assert.ok(d, 'expected a date');
+    assert.strictEqual(d.getDate(), 22);
+    assert.strictEqual(d.getMonth(), 7); // August
+});
+
+test('parses the new API format with weekday and year', () => {
+    const d = parseTournamentDate('Sa, 15.8.2026');
+    assert.strictEqual(d.getDate(), 15);
+    assert.strictEqual(d.getMonth(), 7);
+    assert.strictEqual(d.getFullYear(), 2026);
+});
+
+test('parses a range and returns the start date', () => {
+    const d = parseTournamentDate('So, 16.8. – Fr, 21.8.2026');
+    assert.strictEqual(d.getDate(), 16);
+    assert.strictEqual(d.getMonth(), 7);
+});
+
+test('ignores trailing notes such as "abgesagt"', () => {
+    const d = parseTournamentDate('Sa, 15.8.2026 abgesagt');
+    assert.strictEqual(d.getDate(), 15);
+    assert.strictEqual(d.getFullYear(), 2026);
+});
+
+test('returns null for unusable input', () => {
+    for (const input of ['', null, undefined, 'demnächst', '99.99.']) {
+        assert.strictEqual(parseTournamentDate(input), null, `input: ${input}`);
+    }
+});
+
+test('rejects impossible months', () => {
+    assert.strictEqual(parseTournamentDate('01.13.2026'), null);
+});
+
+console.log('compareTournaments');
+
+test('sorts by date ascending', () => {
+    const list = [
+        { title: 'B', date: '22.08. bis 23.08.' },
+        { title: 'A', date: '01.08. bis 02.08.' },
+    ];
+    list.sort((a, b) => compareTournaments(a, b, 'date'));
+    assert.strictEqual(list[0].title, 'A');
+});
+
+test('puts entries with unparseable dates last', () => {
+    const list = [
+        { title: 'Unbekannt', date: 'wird noch bekannt gegeben' },
+        { title: 'Konkret', date: '01.08. bis 02.08.' },
+    ];
+    list.sort((a, b) => compareTournaments(a, b, 'date'));
+    assert.strictEqual(list[0].title, 'Konkret');
+    assert.strictEqual(list[1].title, 'Unbekannt');
+});
+
+test('sorts by title using German collation', () => {
+    const list = [
+        { title: 'Zwickau Open' },
+        { title: 'Ähringen Cup' },
+        { title: 'Berlin Masters' },
+    ];
+    list.sort((a, b) => compareTournaments(a, b, 'title'));
+    assert.deepStrictEqual(list.map(t => t.title),
+        ['Ähringen Cup', 'Berlin Masters', 'Zwickau Open']);
+});
+
+test('sorts by organizer', () => {
+    const list = [
+        { organizer: 'TC Ulm' },
+        { organizer: 'TC Aalen' },
+    ];
+    list.sort((a, b) => compareTournaments(a, b, 'organizer'));
+    assert.strictEqual(list[0].organizer, 'TC Aalen');
+});
+
+test('falls back to the title when dates are equal', () => {
+    const list = [
+        { title: 'B', date: '01.08.' },
+        { title: 'A', date: '01.08.' },
+    ];
+    list.sort((a, b) => compareTournaments(a, b, 'date'));
+    assert.strictEqual(list[0].title, 'A');
+});
+
+test('handles missing fields without throwing', () => {
+    const list = [{}, { title: 'A' }, { date: '01.08.' }];
+    assert.doesNotThrow(() => list.sort((a, b) => compareTournaments(a, b, 'date')));
+    assert.doesNotThrow(() => list.sort((a, b) => compareTournaments(a, b, 'title')));
+});
+
+console.log('escapeHtml');
+
+test('escapes markup so tournament data cannot inject HTML', () => {
+    assert.strictEqual(
+        escapeHtml('<img src=x onerror="alert(1)">'),
+        '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+});
+
+test('escapes quotes and ampersands', () => {
+    assert.strictEqual(escapeHtml(`Rot & Weiß "TC" 'X'`),
+        'Rot &amp; Weiß &quot;TC&quot; &#39;X&#39;');
+});
+
+test('handles null and undefined', () => {
+    assert.strictEqual(escapeHtml(null), '');
+    assert.strictEqual(escapeHtml(undefined), '');
+});
+
+console.log('isValidPlayerLK');
+
+test('accepts values across the LK scale', () => {
+    for (const v of [1, 25, 12, '12', '12.5', '12,5', ' 7 ']) {
+        assert.strictEqual(isValidPlayerLK(v), true, `should accept ${JSON.stringify(v)}`);
+    }
+});
+
+test('rejects values outside the scale', () => {
+    for (const v of [0, 0.9, 25.1, 30, -5]) {
+        assert.strictEqual(isValidPlayerLK(v), false, `should reject ${JSON.stringify(v)}`);
+    }
+});
+
+test('rejects empty and non-numeric input', () => {
+    for (const v of ['', '   ', null, undefined, 'abc', 'LK']) {
+        assert.strictEqual(isValidPlayerLK(v), false, `should reject ${JSON.stringify(v)}`);
+    }
+});
+
+console.log('distance');
+
+test('measures a known distance', () => {
+    // Karlsruhe to Stuttgart is about 64km as the crow flies.
+    const km = distanceKm(49.0069, 8.4037, 48.7758, 9.1829);
+    assert.ok(Math.abs(km - 64) < 2, `expected about 64km, got ${km.toFixed(1)}`);
+});
+
+test('measures a long distance across the country', () => {
+    // Hamburg to München, roughly 613km.
+    const km = distanceKm(53.5503, 9.9937, 48.1371, 11.5754);
+    assert.ok(Math.abs(km - 613) < 10, `expected about 613km, got ${km.toFixed(1)}`);
+});
+
+test('distance to itself is zero', () => {
+    assert.strictEqual(Math.round(distanceKm(49.0069, 8.4037, 49.0069, 8.4037)), 0);
+});
+
+test('distance is symmetric', () => {
+    const there = distanceKm(49.0069, 8.4037, 53.5503, 9.9937);
+    const back = distanceKm(53.5503, 9.9937, 49.0069, 8.4037);
+    assert.ok(Math.abs(there - back) < 0.001, 'distance should not depend on direction');
+});
+
+test('coordinates arriving as strings are parsed', () => {
+    // The API returns them as strings; treating them as numbers would give NaN.
+    const km = tournamentDistanceKm({ lat: '48.7758', lon: '9.1829' },
+        { lat: 49.0069, lon: 8.4037 });
+    assert.ok(km != null && Math.abs(km - 64) < 2, `got ${km}`);
+});
+
+test('unusable coordinates yield null rather than NaN', () => {
+    // NaN compares false against everything, so a tournament carrying it would
+    // sort unpredictably and slip through the radius filter.
+    const origin = { lat: 49.0069, lon: 8.4037 };
+    for (const bad of [{ lat: '', lon: '' }, { lat: 'n/a', lon: '9.18' }, {}]) {
+        assert.strictEqual(tournamentDistanceKm(bad, origin), null,
+            `expected null for ${JSON.stringify(bad)}`);
+    }
+});
+
+test('no origin means no distance', () => {
+    assert.strictEqual(tournamentDistanceKm({ lat: '48.7758', lon: '9.1829' }, null), null);
+});
+
+test('formats distance with honest precision', () => {
+    // Below 10km a decimal is meaningful; beyond it implies accuracy that
+    // club-level coordinates do not have.
+    assert.strictEqual(formatDistance(3.42), '3,4 km');
+    assert.strictEqual(formatDistance(64.3), '64 km');
+    assert.strictEqual(formatDistance(null), '');
+});
+
+test('sorts by distance with unplaceable tournaments last', () => {
+    const list = [
+        { title: 'Fern', _distanceKm: 120 },
+        { title: 'Unbekannt', _distanceKm: null },
+        { title: 'Nah', _distanceKm: 5 },
+    ];
+    const sorted = list.slice().sort((a, b) => compareTournaments(a, b, 'distance'));
+    assert.deepStrictEqual(sorted.map(t => t.title), ['Nah', 'Fern', 'Unbekannt']);
+});
+
+test('equal distances fall back to the title', () => {
+    const list = [
+        { title: 'B-Turnier', _distanceKm: 10 },
+        { title: 'A-Turnier', _distanceKm: 10 },
+    ];
+    const sorted = list.slice().sort((a, b) => compareTournaments(a, b, 'distance'));
+    assert.deepStrictEqual(sorted.map(t => t.title), ['A-Turnier', 'B-Turnier']);
+});
+
+console.log('map markers');
+
+test('pin svg is well formed and uses the accent colour', () => {
+    const svg = tennisBallPin();
+    assert.ok(svg.startsWith('<svg'), 'should be an svg element');
+    assert.ok(svg.trim().endsWith('</svg>'), 'should be closed');
+    assert.ok(svg.includes('#2f6f4e'), 'should use the accent colour');
+    // The white outline is what lifts the pin off busy map tiles.
+    assert.ok(svg.includes('stroke="#ffffff"'), 'should have a white outline');
+});
+
+test('pin scales without breaking the viewBox', () => {
+    for (const size of [24, 34, 48]) {
+        const svg = tennisBallPin({ size });
+        assert.ok(svg.includes(`width="${size}"`), `size ${size} should be applied`);
+        // A fixed viewBox is what keeps the artwork proportional at any size.
+        assert.ok(svg.includes('viewBox="0 0 32 40"'), 'viewBox must stay constant');
+    }
+});
+
+test('cluster label is escaped-safe and capped', () => {
+    for (const [count, expected] of [[3, '>3<'], [42, '>42<'], [999, '>999<'], [1500, '>999+<']]) {
+        const icon = clusterIcon(count);
+        assert.ok(icon.options.html.includes(expected),
+            `count ${count} should render as ${expected}`);
+    }
+});
+
+test('cluster grows with the number of tournaments', () => {
+    const small = clusterIcon(5).options.iconSize[0];
+    const medium = clusterIcon(50).options.iconSize[0];
+    const large = clusterIcon(500).options.iconSize[0];
+    assert.ok(small < medium && medium < large, 'sizes should increase with count');
+    // Capped so dense regions are not dominated by huge circles.
+    assert.ok(large <= 60, 'largest cluster should stay reasonable');
+});
+
+test('cluster is anchored at its centre', () => {
+    const icon = clusterIcon(10);
+    const [w, h] = icon.options.iconSize;
+    const [ax, ay] = icon.options.iconAnchor;
+    assert.strictEqual(ax, w / 2, 'x anchor should be centred');
+    assert.strictEqual(ay, h / 2, 'y anchor should be centred');
+});
+
+// Regression: the first version drew both seams curving toward each other,
+// which formed a V and read as a leaf rather than a tennis ball.
+test('ball seams bow in opposite directions', () => {
+    const svg = tennisBallPin();
+
+    // Two separate seam paths, not one combined path with an M-jump.
+    const seams = svg.match(/<path d="M[\d.]+ [\d.]+c-?[\d.]/g) || [];
+    assert.ok(seams.length >= 2, 'expected two separate seam paths');
+
+    // A real ball's seams mirror each other: one curves right (positive x
+    // control points), the other left (negative). A V shape has both
+    // converging, which shows up as the same sign on both.
+    const left = svg.includes('M11.3 9.6c2.1');
+    const right = svg.includes('M20.7 9.6c-2.1');
+    assert.ok(left && right, 'seams must mirror each other around the centre');
+});
+
+test('cluster keeps both seams faint enough to read the count', () => {
+    const html = clusterIcon(42).options.html;
+    const opacities = [...html.matchAll(/opacity="([\d.]+)"/g)].map(m => parseFloat(m[1]));
+    assert.ok(opacities.length >= 1, 'seams should declare an opacity');
+    assert.ok(Math.max(...opacities) <= 0.5,
+        'seams must stay subtle so the count dominates');
+});
+
+test('pin is anchored at its tip so it points at the venue', () => {
+    // A centred anchor would place the pin's middle on the coordinates,
+    // which shifts every tournament visibly north on the map.
+    const svg = tennisBallPin({ size: 34 });
+    assert.ok(svg.includes('width="34"'));
+});
+
+if (failures > 0) {
+    console.error(`\n${failures} test(s) failed`);
+    process.exit(1);
+}
+console.log('\nAll frontend tests passed');
