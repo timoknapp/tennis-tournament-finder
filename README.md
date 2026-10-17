@@ -18,31 +18,33 @@
 
 * Currently supported tennis federations:
   * [Badischer Tennis Verband (BAD)](https://www.badischertennisverband.de/)
+  * [Bayerischer Tennis-Verband (BTV)](https://www.btv.de)
+  * [Hamburger Tennisverband (HAM)](https://www.hamburger-tennisverband.de)
   * [Hessischer Tennis Verband (HTV)](https://www.htv-tennis.de/)
   * [Rheinland-Pfälzischer Tennis Verband (RPTV)](https://www.rlp-tennis.de/)
+  * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
+  * [Tennisverband Schleswig-Holstein (SLH)](https://www.tennis.de/slh.html)
   * [Sächsischer Tennis Verband (STV)](https://www.stv-tennis.de)
   * [Tennisverband Mecklenburg-Vorpommern (TMV)](https://www.tennis-mv.de)
+  * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
   * [Tennisverband Sachsen-Anhalt (TSA)](https://www.tennis-tsa.de)
   * [Thüringer Tennis-Verband (TTV)](https://www.ttv-tennis.de)
+  * [Tennis-Verband Berlin-Brandenburg (TVBB)](https://www.tvbb.de)
+  * [Tennisverband Mittelrhein (TVM)](https://www.tvm-tennis.de)
   * [Tennis-Verband Niederrhein (TVN)](https://www.tvn-tennis.de)
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
+  * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Helps you finding the tournaments around you
-* Lets you filter tournaments by date, competition type, and federation
+* Map and list view, with the list sortable by date, title or organizer
+* Lets you filter tournaments by date, competition type, federation and your own LK
 * Short link to the official Tournament at [tennis.de](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
 * PWAs (Progressive Web Apps) support. You can install the app on your phone.
 
+All 17 German regional federations are supported.
+
 ### Soon
 
-* Support for more tennis federations:
-  * [Bayerischer Tennis Verband (BTV)](https://www.btv.de)
-  * [Tennis-Verband Berlin-Brandenburg (TVBB)](https://www.tvbb.de)
-  * [Hamburger Tennis-Verband](https://www.hamburger-tennisverband.de)
-  * [Tennisverband Mittelrhein (TVM)](https://www.tvm-tennis.de)
-  * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
-  * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
-  * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis.sh)
-  * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Store favorite tournaments (locally)
 
 ## Backend Development
@@ -54,6 +56,235 @@ The backend is written in Go and provides the API for fetching tournament data f
 ```bash
 cd backend
 go run ./cmd/main.go
+```
+
+### Running the Tests
+
+Every external dependency (federation websites and the Nominatim geocoding
+service) is mocked with local `httptest` servers, so the suite runs offline and
+deterministically.
+
+```bash
+cd backend
+
+# Full suite with the race detector (requires a C compiler for -race)
+go test -race ./...
+
+# Quick run without the race detector
+go test ./...
+
+# With coverage
+go test -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
+```
+
+HTML fixtures for the federation parsers live in
+`backend/pkg/tournament/testdata/`. When a federation changes its markup, update
+the corresponding fixture and adjust the expectations in
+`backend/pkg/tournament/tournament_test.go` in the same commit.
+
+By default the tests log at `ERROR` level. Set `TTF_LOG_LEVEL=DEBUG` to see the
+full output while debugging a failure.
+
+### Configuration
+
+| Environment variable | Default | Description |
+| --- | --- | --- |
+| `TTF_LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR`. |
+| `TTF_CACHE_PATH` | `./data/cache.bolt` | BoltDB file backing the geocoding cache. |
+| `TTF_CACHE_MEMORY` | `true` | Keep an in-memory copy of the cache. |
+| `TTF_HTTP_TIMEOUT_SECONDS` | `20` | Total timeout for federation requests. |
+| `TTF_GEOCODING_TIMEOUT_SECONDS` | `20` | Total timeout for geocoding requests. |
+| `TTF_USER_AGENT` | `TennisTournamentFinder/1.0 (+repo URL)` | `User-Agent` sent upstream. Forks should set their own contact details. |
+| `TTF_NOMINATIM_URL` | `https://nominatim.openstreetmap.org/search.php` | Geocoding endpoint. Point this at a self-hosted Nominatim instance if you need higher throughput. |
+| `TTF_NOMINATIM_INTERVAL_MS` | `1000` | Minimum spacing between uncached geocoding requests. Do not lower this for the shared public instance. |
+| `TTF_CLUB_LOCATIONS` | *(embedded file)* | Path to a custom club location override file. |
+| `TTF_RESULT_CACHE` | `true` | Set to `false` to bypass the tournament result cache. |
+| `TTF_RESULT_CACHE_PATH` | `./data/results.bolt` | BoltDB file backing the result cache. |
+| `TTF_CACHE_TTL_MINUTES` | `120` | How long cached tournament results stay fresh. |
+| `TTF_CACHE_STALE_MINUTES` | `1440` | How long expired results may still be served when a federation is unreachable. |
+| `TTF_SCHEDULER_WARMUP_DAYS` | `30` | How far ahead the scheduled run pre-fetches. |
+
+#### External service usage
+
+The public Nominatim instance requires an identifying `User-Agent` and permits
+at most one request per second. The backend enforces both: requests carry the
+agent above and are serialized process-wide by a rate limiter. Cached lookups
+never reach the network, so they do not consume that budget. See the
+[Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+before raising the request rate.
+
+### Result caching
+
+Tournament results are cached per federation and query, so a user request
+normally performs no scraping at all.
+
+* **Keyed** by federation, date range and competition type, so one slow
+  federation never holds up the others and a refresh only redoes expired work.
+* **Persistent** (BoltDB), so a restart keeps whatever the scheduler fetched.
+* **Stale-tolerant**: when a federation is unreachable, the expired copy is
+  still served (up to `TTF_CACHE_STALE_MINUTES`) and marked as stale, because
+  an out-of-date list is far more useful than an empty map.
+* **Stampede-safe**: concurrent misses for the same key trigger a single
+  upstream fetch.
+
+Cache contents are visible at `http://127.0.0.1:9090/stats` under
+`result_cache`, including how many entries are fresh, stale or expired.
+
+Enable the scheduler to keep the cache warm ahead of user traffic; it
+invalidates before fetching, so a scheduled run always retrieves current data.
+
+### Federation data sources
+
+Sixteen federations are served by the shared nuLiga platform and use one of two
+parsers (`old`/`new`). Two are special:
+
+| Federation | Note |
+| --- | --- |
+| SLH | Commonly abbreviated TSH, but nuLiga serves it as `slh.liga.nu` with `federation=SLH`. |
+| BTV | Bavaria left nuLiga. `btv.de` embeds a ZK (zkoss) widget hosted at `btv-prod.burdadigitalsystems.de`, handled by `pkg/btv`. |
+
+The BTV widget needs no authentication, but it is a stateful UI protocol rather
+than an API:
+
+1. `GET` the widget page for a `JSESSIONID` and the ZK desktop id.
+2. `POST` `onClientInfo` to render the result grid.
+3. `POST` `onPaging` per further page — the grid shows 10 rows at a time.
+
+Two details are easy to get wrong and are covered by tests:
+
+* **`ZK-SID` must increment per request.** With a constant value the server
+  treats later requests as duplicates and replays the first response, so
+  pagination silently returns page 0 forever.
+* **The paging widget's uuid is regenerated in every response** and has to be
+  re-read before the next request.
+
+### LK filtering
+
+Pass `?lk=<value>` (1–25, decimal point or comma) to keep only competitions a
+player of that Leistungsklasse may enter:
+
+```
+GET /?dateFrom=01.08.2026&dateTo=15.08.2026&lk=12.5
+```
+
+Federations publish the LK range as free text in several formats, all handled
+by `pkg/skilllevel`:
+
+```
+"1,0–25,0"     en dash, decimal comma  (most common)
+"LK 1-25"      prefix, hyphen, integers
+"LK 1.5-25"    decimal point
+"12,6–25,0"    fractional bounds
+""             no restriction published
+```
+
+Two deliberate choices:
+
+* **Competitions without a parseable range are kept.** A competition that does
+  not publish a restriction is open, and hiding it would lose real tournaments.
+* **Filtering runs after the cache lookup**, so every player LK shares one
+  cached federation result instead of multiplying cache entries.
+
+An invalid `lk` value is ignored rather than rejected, so a typo still returns
+results.
+
+### API response format
+
+By default the API returns a bare JSON array of tournaments, which is what
+older clients expect.
+
+Pass `?format=full` for per-federation status, so a client can tell "no
+tournaments match" apart from "this federation is down":
+
+```json
+{
+  "tournaments": [ ... ],
+  "federations": [
+    { "id": "BAD", "name": "Badischer Tennisverband", "status": "ok", "count": 141 },
+    { "id": "WTV", "name": "Westfälischer Tennis-Verband", "status": "stale", "count": 131, "age_seconds": 7200 }
+  ],
+  "partial": true
+}
+```
+
+`status` is one of `ok`, `cached`, `stale` or `error`. `partial` is true when
+any federation failed or is serving stale data; the frontend surfaces that as a
+banner instead of silently showing fewer tournaments.
+
+## Frontend Development
+
+### Running the tests
+
+```bash
+node --check script/main.js     # syntax
+node script/main.test.js        # date parsing, sorting and escaping
+```
+
+Date parsing is the fragile part: federations publish dates as free text in
+several formats (`22.08. bis 23.08.`, `Sa, 15.8.2026 abgesagt`,
+`So, 16.8. – Fr, 21.8.2026`), so changes there should always be covered by a
+test case.
+
+### Geocoding and map pins
+
+Federations publish only a club name, never a postal address, so the venue's
+city has to be derived from that name. Resolution happens in this order:
+
+1. **Curated overrides** — `backend/pkg/clublocations/data/club-locations.json`
+2. **Name heuristics** — `backend/pkg/placename`
+3. **Federation default coordinates** — last resort; several tournaments then
+   share one marker
+
+#### Fixing a wrong map pin
+
+If a tournament shows up in the wrong place, add an entry to
+`backend/pkg/clublocations/data/club-locations.json`. No code change is needed:
+
+```json
+{
+  "contains": "Lohausener",
+  "city": "Düsseldorf",
+  "state": "Nordrhein-Westfalen",
+  "note": "Lohausen is a district of Düsseldorf; not derivable from the name."
+}
+```
+
+* Use `match` for an exact club name or `contains` for a substring.
+* Matching ignores case, punctuation, umlaut spelling and extra spaces.
+* Prefer `city` (it gets geocoded). Use `lat`/`lon` only when even the city is
+  ambiguous.
+* Exact matches beat `contains`; among `contains` entries the longest wins.
+* `note` is required by the tests — explain why the automatic extraction fails.
+
+A different file can be supplied with `TTF_CLUB_LOCATIONS`.
+
+#### Finding wrong pins
+
+`cmd/pincheck` lists tournaments that fell back to their federation's default
+coordinates, which is what produces a stack of unrelated tournaments on one
+marker. Those are the pins worth fixing:
+
+```bash
+cd backend
+go run ./cmd/pincheck -days 30            # report fallback pins
+go run ./cmd/pincheck -days 30 -json      # emit override stubs to paste
+```
+
+Note that venue-exact addresses are **not** available from the upstream
+sources: tennis.de requires a login for tournament details (see issue #55), and
+nuLiga does not expose club addresses. Overrides are therefore the supported
+way to correct a location.
+
+#### Measuring accuracy
+
+`cmd/geobench` resolves a benchmark set of real club names against a live
+Nominatim instance and reports the hit rate. It performs rate-limited network
+requests, so it is a manual tool and is never run by CI:
+
+```bash
+cd backend
+go run ./cmd/geobench      # add -v for coordinates and matched place names
 ```
 
 ### Log Level Configuration

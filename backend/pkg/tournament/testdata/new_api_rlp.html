@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!--
+  Fixture: new API, RLP flavour.
+
+  Differs from the WTB fixture in two ways that the parser must tolerate:
+    - the title link lives in an <h3> instead of an <h2>
+    - the "Austragungsort:" value is terminated by "Offen für" instead of
+      "Meldeschluss"
+
+  Also covers a tournament whose location is missing entirely, which must fall
+  back to the federation's default coordinates.
+-->
+<html lang="de">
+<head><meta charset="utf-8"><title>Turnierkalender</title></head>
+<body>
+<table class="responsive-individual">
+  <tbody>
+    <tr>
+      <td class="daterange">05.10.2026 - 07.10.2026</td>
+      <td>
+        <h3><a href="https://www.tennis.de/spielen/turniersuche.html#detail/900001">Mainz Cup</a></h3>
+        <p>
+          Veranstalter: TC Mainz Austragungsort: Mainz Offen für: Alle
+        </p>
+      </td>
+      <td class="competitionAbbr">
+        <table>
+          <tbody>
+            <tr>
+              <td class="name"><span>Herren Einzel</span></td>
+              <td class="fedRank">LK 9,0</td>
+              <td class="result"></td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td class="daterange">20.10.2026</td>
+      <td>
+        <h3><a href="https://www.tennis.de/spielen/turniersuche.html#detail/900002">Turnier ohne Ort</a></h3>
+        <p>
+          Veranstalter: TC Ohne Ort Offen für: Alle
+        </p>
+      </td>
+      <td class="competitionAbbr">
+        <table>
+          <tbody>
+            <tr>
+              <td class="name"><span>Damen Doppel</span></td>
+              <td class="fedRank">LK 16,0</td>
+              <td class="result"></td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!--
+  Fixture: new (TYPO3 / nuPortal) tournament calendar response, WTB flavour.
+
+  Covers:
+    - the ".responsive-individual tbody tr" row structure
+    - td.daterange for the tournament date
+    - an <h2> title link (WTB); see new_api_rlp.html for the <h3> variant
+    - "Veranstalter:" / "Austragungsort:" parsing terminated by "Meldeschluss"
+    - a nested competition table in td.competitionAbbr
+    - a continuation row that adds competitions to an existing tournament
+    - an empty row that must be skipped
+-->
+<html lang="de">
+<head><meta charset="utf-8"><title>Turnierkalender</title></head>
+<body>
+<table class="responsive-individual">
+  <tbody>
+    <tr>
+      <td class="daterange">01.09.2026 - 03.09.2026</td>
+      <td>
+        <h2><a href="https://www.tennis.de/spielen/turniersuche.html#detail/800001">Stuttgart   Open</a></h2>
+        <p>
+          Veranstalter: TC Stuttgart Austragungsort: Stuttgart Meldeschluss: 20.08.2026
+        </p>
+      </td>
+      <td class="competitionAbbr">
+        <table>
+          <tbody>
+            <tr>
+              <td class="name"><span>Herren Einzel</span></td>
+              <td class="fedRank">LK 10,0</td>
+              <td class="result"></td>
+            </tr>
+            <tr>
+              <td class="name"><span>Damen Einzel</span></td>
+              <td class="fedRank">LK 11,5</td>
+              <td class="result"></td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+
+    <tr>
+      <td class="daterange"></td>
+      <td>
+        <a href="https://www.tennis.de/spielen/turniersuche.html#detail/800001">Stuttgart Open</a>
+      </td>
+      <td class="competitionAbbr">
+        <table>
+          <tbody>
+            <tr>
+              <td class="name"><span>Herren Doppel</span></td>
+              <td class="fedRank">LK 13,0</td>
+              <td class="result"></td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td class="daterange">12.09.2026</td>
+      <td>
+        <h2><a href="https://www.tennis.de/spielen/turniersuche.html#detail/800002">Ulmer
+          Herbstturnier</a></h2>
+        <p>
+          Veranstalter: TC Ulm Austragungsort: Ulm Meldeschluss: 01.09.2026
+        </p>
+      </td>
+      <td class="competitionAbbr">
+        <table>
+          <tbody>
+            <tr>
+              <td class="name"><span>Senioren Einzel</span></td>
+              <td class="fedRank">LK 15,0</td>
+              <td class="result"></td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</body>
+</html>

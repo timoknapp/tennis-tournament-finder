@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"go.etcd.io/bbolt"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
+	"go.etcd.io/bbolt"
 )
 
 const (
