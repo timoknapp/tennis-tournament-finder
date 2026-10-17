@@ -13,12 +13,16 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/btv"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/federation"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/httpclient"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/logger"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/models"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/openstreetmap"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/placename"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/resultcache"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/skilllevel"
+	"github.com/timoknapp/tennis-tournament-finder/pkg/unresolved"
 	"github.com/timoknapp/tennis-tournament-finder/pkg/util"
 )
 
@@ -148,6 +152,42 @@ func buildFederationStatuses(results []FederationResult) ([]FederationStatus, bo
 	return statuses, partial
 }
 
+// FilterByLK removes competition entries a player of the given LK cannot
+// enter, and drops tournaments left without any entry.
+//
+// Entries without a published LK range are kept: a competition that does not
+// state a restriction is open, and hiding it would lose real tournaments.
+func FilterByLK(tournaments []models.Tournament, playerLK float64) []models.Tournament {
+	filtered := make([]models.Tournament, 0, len(tournaments))
+
+	for _, t := range tournaments {
+		// A tournament without parsed entries carries no LK information at
+		// all, so it stays visible rather than being silently dropped.
+		if len(t.Entries) == 0 {
+			filtered = append(filtered, t)
+			continue
+		}
+
+		kept := make([]models.CompetitionEntry, 0, len(t.Entries))
+		for _, e := range t.Entries {
+			range_, ok := skilllevel.Parse(e.SkillLevel)
+			if !ok || range_.Includes(playerLK) {
+				kept = append(kept, e)
+			}
+		}
+
+		if len(kept) == 0 {
+			continue
+		}
+
+		copy_ := t
+		copy_.Entries = kept
+		filtered = append(filtered, copy_)
+	}
+
+	return filtered
+}
+
 func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	federations := federation.GetFederations()
 
@@ -176,12 +216,27 @@ func GetTournaments(w http.ResponseWriter, r *http.Request) {
 	}
 	compType := r.URL.Query().Get("compType")
 	selectedFederations := r.URL.Query().Get("federations")
+	playerLKParam := r.URL.Query().Get("lk")
 
-	logger.Info("Get Tournaments from: %s to: %s, compType: %s, federations: %s", dateFrom, dateTo, compType, selectedFederations)
+	logger.Info("Get Tournaments from: %s to: %s, compType: %s, federations: %s, lk: %s",
+		dateFrom, dateTo, compType, selectedFederations, playerLKParam)
 
 	filteredFederations := FilterFederations(federations, selectedFederations)
 
 	tournaments, results := CollectTournaments(r.Context(), filteredFederations, dateFrom, dateTo, compType)
+
+	// LK filtering happens after the cache lookup on purpose: the cache stores
+	// the full federation result, so different player LKs share one cache
+	// entry instead of multiplying it.
+	if playerLKParam != "" {
+		if playerLK, ok := skilllevel.ParsePlayerLK(playerLKParam); ok {
+			before := len(tournaments)
+			tournaments = FilterByLK(tournaments, playerLK)
+			logger.Info("LK filter %.1f: %d -> %d tournaments", playerLK, before, len(tournaments))
+		} else {
+			logger.Warn("Ignoring invalid lk parameter: %q", playerLKParam)
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -329,9 +384,34 @@ func fetchFederation(ctx context.Context, fed models.Federation, dateFrom, dateT
 		return getTournamentsFromFederationOldApi(ctx, fed, dateFrom, dateTo, compType)
 	case "new":
 		return getTournamentsFromFederationNewApi(ctx, fed, dateFrom, dateTo, compType)
+	case "btv":
+		// Bavaria runs its own ZK widget rather than nuLiga.
+		return getTournamentsFromBTV(ctx, fed)
 	default:
 		return nil, fmt.Errorf("unknown API version %q for federation %s", fed.ApiVersion, fed.Id)
 	}
+}
+
+// getTournamentsFromBTV fetches and geocodes the Bavarian tournament list.
+func getTournamentsFromBTV(ctx context.Context, fed models.Federation) ([]models.Tournament, error) {
+	logger.Info("Get Tournaments in: %s (BTV widget)", fed.Id)
+
+	tournaments, err := btv.New(fed.Url).GetTournaments(ctx, fed)
+	if err != nil {
+		return nil, err
+	}
+
+	// The widget supplies a venue city but no coordinates.
+	for i := range tournaments {
+		geoCoords, approximate := resolveGeocoordinates(fed, tournaments[i], defaultGeocoder, tournaments[i].Location)
+		tournaments[i].Lat = geoCoords.Lat
+		tournaments[i].Lon = geoCoords.Lon
+		tournaments[i].ApproximateLocation = approximate
+	}
+
+	logger.Info("Federation %s: Found %d tournaments total", fed.Id, len(tournaments))
+
+	return tournaments, nil
 }
 
 // ageCategoryForCompType maps a competition type to the new API's age category.
@@ -533,8 +613,10 @@ func (l *limitedReadCloser) Read(p []byte) (int, error) { return l.reader.Read(p
 func (l *limitedReadCloser) Close() error               { return l.closer.Close() }
 
 // resolveGeocoordinates looks up coordinates and falls back to the federation
-// default when nothing suitable is found.
-func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, geocode geocoder, subject string) models.Geocoordinates {
+// default when nothing suitable is found. The second return value reports
+// whether that fallback was used, which callers cannot work out from the
+// coordinates alone: several federation defaults sit exactly on a major city.
+func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, geocode geocoder, subject string) (models.Geocoordinates, bool) {
 	if geocode == nil {
 		geocode = defaultGeocoder
 	}
@@ -543,10 +625,15 @@ func resolveGeocoordinates(fed models.Federation, tournament models.Tournament, 
 	if geoCoords.Lat == "" || geoCoords.Lon == "" {
 		logger.Warn("No Geocoordinates could be found for (%s): '%s'. Falling back to default in '%s'",
 			tournament.Id, subject, fed.State)
-		return fed.Geocoordinates
+		// A log line scrolls away; the pin stays wrong until someone adds an
+		// override. Recording the club makes the backlog visible at
+		// /stats/unresolved-clubs instead of waiting for a user to report it.
+		unresolved.Record(tournament.Organizer, fed.Id, fed.State,
+			placename.Candidates(tournament.Organizer))
+		return fed.Geocoordinates, true
 	}
 
-	return geoCoords
+	return geoCoords, false
 }
 
 // ParseNewApiDocument parses one page of the new API's HTML into tournaments.
@@ -639,9 +726,10 @@ func ParseNewApiDocument(r io.Reader, fed models.Federation, geocode geocoder) (
 
 				// Get geocoordinates if we have a location
 				if tournament.Location != "" {
-					geoCoords := resolveGeocoordinates(fed, tournament, geocode, tournament.Location)
+					geoCoords, approximate := resolveGeocoordinates(fed, tournament, geocode, tournament.Location)
 					tournament.Lat = geoCoords.Lat
 					tournament.Lon = geoCoords.Lon
+					tournament.ApproximateLocation = approximate
 				} else {
 					logger.Warn("Tournament location missing: %s ; Date: %s", tournament.Title, tournament.Date)
 				}
@@ -777,9 +865,10 @@ func ParseOldApiDocument(r io.Reader, fed models.Federation, geocode geocoder) (
 					if len(tournament.Title) > 0 {
 						tournament.Organizer = extractOldApiOrganizer(columnTournament, tournament)
 
-						geoCoords := resolveGeocoordinates(fed, tournament, geocode, tournament.Organizer)
+						geoCoords, approximate := resolveGeocoordinates(fed, tournament, geocode, tournament.Organizer)
 						tournament.Lat = geoCoords.Lat
 						tournament.Lon = geoCoords.Lon
+						tournament.ApproximateLocation = approximate
 					}
 				case 2: // Competition (Konkurrenz)
 					currentEntry.Competition = value

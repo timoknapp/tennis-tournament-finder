@@ -18,10 +18,12 @@
 
 * Currently supported tennis federations:
   * [Badischer Tennis Verband (BAD)](https://www.badischertennisverband.de/)
+  * [Bayerischer Tennis-Verband (BTV)](https://www.btv.de)
   * [Hamburger Tennisverband (HAM)](https://www.hamburger-tennisverband.de)
   * [Hessischer Tennis Verband (HTV)](https://www.htv-tennis.de/)
   * [Rheinland-Pfälzischer Tennis Verband (RPTV)](https://www.rlp-tennis.de/)
   * [Saarländischer Tennisbund (STB)](https://www.stb-tennis.de)
+  * [Tennisverband Schleswig-Holstein (SLH)](https://www.tennis.de/slh.html)
   * [Sächsischer Tennis Verband (STV)](https://www.stv-tennis.de)
   * [Tennisverband Mecklenburg-Vorpommern (TMV)](https://www.tennis-mv.de)
   * [Tennisverband Niedersachsen-Bremen (TNB)](https://www.tnb-tennis.de)
@@ -33,17 +35,16 @@
   * [Württembergischer Tennis Bund (WTB)](https://www.wtb-tennis.de/)
   * [Westfälischer Tennis-Verband (WTV)](https://www.wtv.de)
 * Helps you finding the tournaments around you
-* Lets you filter tournaments by date, competition type, and federation
+* Map and list view, with the list sortable by date, title or organizer
+* Lets you filter tournaments by date, competition type, federation and your own LK
 * Short link to the official Tournament at [tennis.de](https://spieler.tennis.de/web/guest/turniersuche) in order to sign up for the tournament
 * Link to address on Google Maps.
 * PWAs (Progressive Web Apps) support. You can install the app on your phone.
 
+All 17 German regional federations are supported.
+
 ### Soon
 
-* Support for more tennis federations:
-  * [Bayerischer Tennis Verband (BTV)](https://www.btv.de) — no longer served by
-    liga.nu, so it needs its own parser
-  * [Tennisverband Schleswig-Holstein (TSH)](https://www.tennis.sh)
 * Store favorite tournaments (locally)
 
 ## Backend Development
@@ -133,6 +134,61 @@ Cache contents are visible at `http://127.0.0.1:9090/stats` under
 Enable the scheduler to keep the cache warm ahead of user traffic; it
 invalidates before fetching, so a scheduled run always retrieves current data.
 
+### Federation data sources
+
+Sixteen federations are served by the shared nuLiga platform and use one of two
+parsers (`old`/`new`). Two are special:
+
+| Federation | Note |
+| --- | --- |
+| SLH | Commonly abbreviated TSH, but nuLiga serves it as `slh.liga.nu` with `federation=SLH`. |
+| BTV | Bavaria left nuLiga. `btv.de` embeds a ZK (zkoss) widget hosted at `btv-prod.burdadigitalsystems.de`, handled by `pkg/btv`. |
+
+The BTV widget needs no authentication, but it is a stateful UI protocol rather
+than an API:
+
+1. `GET` the widget page for a `JSESSIONID` and the ZK desktop id.
+2. `POST` `onClientInfo` to render the result grid.
+3. `POST` `onPaging` per further page — the grid shows 10 rows at a time.
+
+Two details are easy to get wrong and are covered by tests:
+
+* **`ZK-SID` must increment per request.** With a constant value the server
+  treats later requests as duplicates and replays the first response, so
+  pagination silently returns page 0 forever.
+* **The paging widget's uuid is regenerated in every response** and has to be
+  re-read before the next request.
+
+### LK filtering
+
+Pass `?lk=<value>` (1–25, decimal point or comma) to keep only competitions a
+player of that Leistungsklasse may enter:
+
+```
+GET /?dateFrom=01.08.2026&dateTo=15.08.2026&lk=12.5
+```
+
+Federations publish the LK range as free text in several formats, all handled
+by `pkg/skilllevel`:
+
+```
+"1,0–25,0"     en dash, decimal comma  (most common)
+"LK 1-25"      prefix, hyphen, integers
+"LK 1.5-25"    decimal point
+"12,6–25,0"    fractional bounds
+""             no restriction published
+```
+
+Two deliberate choices:
+
+* **Competitions without a parseable range are kept.** A competition that does
+  not publish a restriction is open, and hiding it would lose real tournaments.
+* **Filtering runs after the cache lookup**, so every player LK shares one
+  cached federation result instead of multiplying cache entries.
+
+An invalid `lk` value is ignored rather than rejected, so a typo still returns
+results.
+
 ### API response format
 
 By default the API returns a bare JSON array of tournaments, which is what
@@ -155,6 +211,20 @@ tournaments match" apart from "this federation is down":
 `status` is one of `ok`, `cached`, `stale` or `error`. `partial` is true when
 any federation failed or is serving stale data; the frontend surfaces that as a
 banner instead of silently showing fewer tournaments.
+
+## Frontend Development
+
+### Running the tests
+
+```bash
+node --check script/main.js     # syntax
+node script/main.test.js        # date parsing, sorting and escaping
+```
+
+Date parsing is the fragile part: federations publish dates as free text in
+several formats (`22.08. bis 23.08.`, `Sa, 15.8.2026 abgesagt`,
+`So, 16.8. – Fr, 21.8.2026`), so changes there should always be covered by a
+test case.
 
 ### Geocoding and map pins
 
@@ -188,6 +258,23 @@ If a tournament shows up in the wrong place, add an entry to
 * `note` is required by the tests — explain why the automatic extraction fails.
 
 A different file can be supplied with `TTF_CLUB_LOCATIONS`.
+
+#### Finding wrong pins
+
+`cmd/pincheck` lists tournaments that fell back to their federation's default
+coordinates, which is what produces a stack of unrelated tournaments on one
+marker. Those are the pins worth fixing:
+
+```bash
+cd backend
+go run ./cmd/pincheck -days 30            # report fallback pins
+go run ./cmd/pincheck -days 30 -json      # emit override stubs to paste
+```
+
+Note that venue-exact addresses are **not** available from the upstream
+sources: tennis.de requires a login for tournament details (see issue #55), and
+nuLiga does not expose club addresses. Overrides are therefore the supported
+way to correct a location.
 
 #### Measuring accuracy
 

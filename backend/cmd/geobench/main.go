@@ -62,6 +62,10 @@ var cases = []benchCase{
 	{organizer: "Lohausener Sport-Verein", state: "Nordrhein-Westfalen", wantCity: "Düsseldorf"},
 	{organizer: "Post Südstadt Karlsruhe", state: "Baden-Württemberg", wantCity: "Karlsruhe"},
 
+	// Ambiguous or district-only names, only solvable via the override file.
+	{organizer: "TC Freiberg", state: "Baden-Württemberg", wantCity: "Freiberg am Neckar"},
+	{organizer: "Tennisclub Rot 1971 e.V.", state: "Baden-Württemberg", wantCity: "St. Leon-Rot"},
+
 	// Multi-state federations: the tournament sits in the secondary state.
 	{organizer: "TC Bad Saarow", state: "Berlin",
 		states: []string{"Berlin", "Brandenburg"}, wantCity: "Bad Saarow"},

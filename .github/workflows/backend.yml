@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go environment
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "1.23"
           cache-dependency-path: backend/go.sum
@@ -78,10 +78,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go environment
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "1.23" # The Go version to download (if necessary) and use.
           cache-dependency-path: backend/go.sum
@@ -95,7 +95,7 @@ jobs:
           ls -la
 
       - name: Deploy
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         if: github.event_name != 'pull_request'
         with:
           host: ${{ secrets.HOST }}

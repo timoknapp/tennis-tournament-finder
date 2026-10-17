@@ -15,6 +15,15 @@ type Tournament struct {
 	Lat       string             `json:"lat"`
 	Lon       string             `json:"lon"`
 	Entries   []CompetitionEntry `json:"entries"` // Competition-SkillLevel pairs
+	// ApproximateLocation marks a tournament pinned at its federation's default
+	// rather than at a place derived from its name.
+	//
+	// This cannot be inferred by comparing coordinates: several federation
+	// defaults sit exactly on a major city, so a club that geocodes correctly
+	// to München is indistinguishable from one that failed and fell back to the
+	// BTV default. Recording the outcome where it is known is the only reliable
+	// way to tell them apart.
+	ApproximateLocation bool `json:"approximate_location,omitempty"`
 }
 
 type Geocoordinates struct {

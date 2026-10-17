@@ -1,0 +1,66 @@
+// Fixture: recorded ZK response from the BTV tournament widget
+// (btv-prod.burdadigitalsystems.de/btvtrnsearch/), captured 2026-08-15.
+//
+// Trimmed to the result grid and the first few rows. It covers: a date range
+// with a venue city, the tennis.de detail link carrying the tournament id,
+// and the abbreviated competition list (W30/E, M40/D, X00/D style codes).
+{},[
+['zul.mesh.Paging','sD1Qk0',{$onPaging:true,totalSize:180,pageSize:10,pageCount:18,detailed:true,autohide:true},{},[]],
+['zul.grid.Columns','sD1Ql0',{},{},[
+['zul.grid.Column','sD1Qm0',{id:'colanz',$onSort:true,$$0onSort:true,label:'180 TURNIERE GEFUNDEN'},{},[]],
+['zul.grid.Column','sD1Qn0',{id:'colms',$onSort:true,$$0onSort:true,width:'130px',label:'MELDESCHLUSS',align:'right'},{},[]]]],
+['zul.grid.Rows','sD1Qv0',{_offset:0,visibleItemCount:180},{},[
+['zul.grid.Row','sD1Qx0',{style:'background-color: #fff',_loaded:true,_index:0},{},[
+['zul.box.Vlayout','sD1Qsd',{vflex:'min'},{},[
+['zul.wgt.Div','sD1Qtd',{hflex:'min',sclass:'box-right'},{},[
+['zul.wgt.Label','sD1Qud',{sclass:'infotext',style:'font-size: 12px; margin-left: 10px; padding-right: 40px',value:'10.08. - 16.08.2026 in Bad Füssing'},{},[]]]],
+['zul.wgt.Html','sD1Qvd',{content:'<a href=\'https://www.tennis.de/spielen/turniersuche.html#detail/759920\' target=\'_blank\'>Bad Füssing Masters by npsports.de   <\/a>'},{},[]],
+['zul.wgt.Label','sD1Qwd',{sclass:'infotext',value:'W30/E, W40/E, W50/E, W55/E, W60/E, W65/E, W70/E, W75/E, W80/E, W85/E, M30/E, M40/E, M50/E, M55/E, M60/E, M65/E, M70/E, M75/E, M80/E, M85/E'},{},[]]]],
+['zul.box.Vlayout','sD1Qxd',{vflex:'min'},{},[
+['zul.wgt.Label','sD1Qyd',{sclass:'infotext',value:'03.08.2026'},{},[]],
+['zul.box.Hlayout','sD1Qzd',{},{},[
+['zul.wgt.Image','sD1Q_e',{src:'img/dtb_icon_18.png'},{},[]],
+['zul.wgt.Image','sD1Q0e',{src:'img/lk_icon_18.png'},{},[]]]]]]]],
+['zul.grid.Row','sD1Q01',{style:'background-color: #fff',_loaded:true,_index:1},{},[
+['zul.box.Vlayout','sD1Q1e',{vflex:'min'},{},[
+['zul.wgt.Div','sD1Q2e',{hflex:'min',sclass:'box-right'},{},[
+['zul.wgt.Label','sD1Q3e',{sclass:'infotext',style:'font-size: 12px; margin-left: 10px; padding-right: 40px',value:'13.08. - 16.08.2026 in Dachau'},{},[]]]],
+['zul.wgt.Html','sD1Q4e',{content:'<a href=\'https://www.tennis.de/spielen/turniersuche.html#detail/812299\' target=\'_blank\'>12. Offene Dachauer Stadtmeisterschaften 2026<\/a>'},{},[]],
+['zul.wgt.Label','sD1Q5e',{sclass:'infotext',value:'W00/E, W00/E, W00/D, W30/E, W40/E, W50/E, M00/E, M00/E, M00/E, M00/D, M30/E, M40/E, M40/D, M50/E, M55/E, M60/E, M65/E, M70/E, X00/D'},{},[]]]],
+['zul.box.Vlayout','sD1Q6e',{vflex:'min'},{},[
+['zul.wgt.Label','sD1Q7e',{sclass:'infotext',value:'10.08.2026'},{},[]],
+['zul.box.Hlayout','sD1Q8e',{},{},[
+['zul.wgt.Image','sD1Q9e',{src:'img/lk_icon_18.png'},{},[]]]]]]]],
+['zul.grid.Row','sD1Q41',{style:'background-color: #fff',_loaded:true,_index:2},{},[
+['zul.box.Vlayout','sD1Qae',{vflex:'min'},{},[
+['zul.wgt.Div','sD1Qbe',{hflex:'min',sclass:'box-right'},{},[
+['zul.wgt.Label','sD1Qce',{sclass:'infotext',style:'font-size: 12px; margin-left: 10px; padding-right: 40px',value:'13.08. - 16.08.2026 in Augsburg'},{},[]]]],
+['zul.wgt.Html','sD1Qde',{content:'<a href=\'https://www.tennis.de/spielen/turniersuche.html#detail/759021\' target=\'_blank\'>6. TC Rot-Weiß Sommer-Cup 2026<\/a>'},{},[]],
+['zul.wgt.Label','sD1Qee',{sclass:'infotext',value:'W00/E, M00/E'},{},[]]]],
+['zul.box.Vlayout','sD1Qfe',{vflex:'min'},{},[
+['zul.wgt.Label','sD1Qge',{sclass:'infotext',value:'10.08.2026'},{},[]],
+['zul.box.Hlayout','sD1Qhe',{},{},[
+['zul.wgt.Image','sD1Qie',{src:'img/dtb_icon_18.png'},{},[]],
+['zul.wgt.Image','sD1Qje',{src:'img/lk_icon_18.png'},{},[]]]]]]]],
+['zul.grid.Row','sD1Q81',{style:'background-color: #fff',_loaded:true,_index:3},{},[
+['zul.box.Vlayout','sD1Qke',{vflex:'min'},{},[
+['zul.wgt.Div','sD1Qle',{hflex:'min',sclass:'box-right'},{},[
+['zul.wgt.Label','sD1Qme',{sclass:'infotext',style:'font-size: 12px; margin-left: 10px; padding-right: 40px',value:'14.08. - 16.08.2026 in Burghausen'},{},[]]]],
+['zul.wgt.Html','sD1Qne',{content:'<a href=\'https://www.tennis.de/spielen/turniersuche.html#detail/754339\' target=\'_blank\'>Junior Open Burghausen <\/a>'},{},[]],
+['zul.wgt.Label','sD1Qoe',{sclass:'infotext',value:'W10/E, W12/E, W14/E, W16/E, M10/E, M12/E, M14/E, M14/E, M16/E, M16/E'},{},[]]]],
+['zul.box.Vlayout','sD1Qpe',{vflex:'min'},{},[
+['zul.wgt.Label','sD1Qqe',{sclass:'infotext',value:'11.08.2026'},{},[]],
+['zul.box.Hlayout','sD1Qre',{},{},[
+['zul.wgt.Image','sD1Qse',{src:'img/dtb_icon_18.png'},{},[]],
+['zul.wgt.Image','sD1Qte',{src:'img/lk_icon_18.png'},{},[]]]]]]]],
+['zul.grid.Row','sD1Qc1',{style:'background-color: #fff',_loaded:true,_index:4},{},[
+['zul.box.Vlayout','sD1Que',{vflex:'min'},{},[
+['zul.wgt.Div','sD1Qve',{hflex:'min',sclass:'box-right'},{},[
+['zul.wgt.Label','sD1Qwe',{sclass:'infotext',style:'font-size: 12px; margin-left: 10px; padding-right: 40px',value:'14.08. - 16.08.2026 in Burghausen'},{},[]]]],
+['zul.wgt.Html','sD1Qxe',{content:'<a href=\'https://www.tennis.de/spielen/turniersuche.html#detail/754343\' target=\'_blank\'>Nachwuchs Open Burghausen   <\/a>'},{},[]],
+['zul.wgt.Label','sD1Qye',{sclass:'infotext',value:'W21/E, M21/E'},{},[]]]],
+['zul.box.Vlayout','sD1Qze',{vflex:'min'},{},[
+['zul.wgt.Label','sD1Q_f',{sclass:'infotext',value:'11.08.2026'},{},[]],
+['zul.box.Hlayout','sD1Q0f',{},{},[
+['zul.wgt.Image','sD1Q1f',{src:'img/dtb_icon_18.png'},{},[]],
+['zul.wgt.Image','sD1Q2f',{src:'img/lk_icon_18.png'},{},[]]]]]]]],
