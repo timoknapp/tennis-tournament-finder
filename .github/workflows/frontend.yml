@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
 
       # A syntax error in main.js breaks the whole app silently, since the
       # page still renders but no script runs.
